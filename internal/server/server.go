@@ -41,11 +41,11 @@ func (s *Server) Start() error {
 		return err
 	}
 
-	if err := s.setupHTTPServer(); err != nil {
+	if err := s.initRabbitMQ(); err != nil {
 		return err
 	}
 
-	if err := s.initRabbitMQ(); err != nil {
+	if err := s.setupHTTPServer(); err != nil {
 		return err
 	}
 

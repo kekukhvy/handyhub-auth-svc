@@ -222,22 +222,22 @@ func (rv *RequestValidator) ValidateVerifyTokenRequest(req *models.VerifyTokenRe
 // validateName validates first name or last name
 func (rv *RequestValidator) validateName(name, fieldName string) error {
 	if name == "" {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	name = strings.TrimSpace(name)
 
 	if len(name) < 2 {
-		return models.ErrInvalidParams
+		return models.ErrValueTooShort
 	}
 
 	if len(name) > 50 {
-		return models.ErrInvalidParams
+		return models.ErrValueTooLong
 	}
 
 	// Check for valid characters
 	if !rv.nameRegex.MatchString(name) {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	return nil
@@ -257,7 +257,7 @@ func (rv *RequestValidator) validatePhone(phone string) error {
 	cleanPhone = strings.ReplaceAll(cleanPhone, ".", "")
 
 	if !rv.phoneRegex.MatchString(cleanPhone) {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	return nil
@@ -279,7 +279,7 @@ func (rv *RequestValidator) validateLanguage(language string) error {
 	}
 
 	if !validLanguages[strings.ToLower(language)] {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	return nil
@@ -293,13 +293,13 @@ func (rv *RequestValidator) validateTimeZone(timezone string) error {
 
 	// Basic timezone validation
 	if len(timezone) < 3 || len(timezone) > 50 {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	// Common timezone patterns
 	timezoneRegex := regexp.MustCompile(`^[A-Za-z]+/[A-Za-z_]+$|^UTC$|^GMT[+-]\d{1,2}$`)
 	if !timezoneRegex.MatchString(timezone) {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	return nil

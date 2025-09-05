@@ -6,9 +6,13 @@ import (
 	"handyhub-auth-svc/internal/models"
 	"strings"
 	"unicode"
+
+	"github.com/sirupsen/logrus"
 )
 
 // PasswordValidator handles password strength validation
+var log = logrus.StandardLogger()
+
 type PasswordValidator struct {
 	minLength           int
 	maxLength           int
@@ -59,15 +63,6 @@ func NewPasswordValidator(validation *config.PasswordValidation) *PasswordValida
 		maxCharRepeat:       validation.MaxCharRepeats,
 		maxSequentialChars:  validation.MaxSequentialChars,
 	}
-}
-
-// NewStrictPasswordValidator creates a validator with strict security rules
-func NewStrictPasswordValidator(validation *config.PasswordValidation) *PasswordValidator {
-	validator := NewPasswordValidator(validation)
-	validator.minLength = 12
-	validator.requireSpecialChars = true
-	validator.minSpecialChars = 2
-	return validator
 }
 
 // Validate performs comprehensive password validation
@@ -168,16 +163,19 @@ func (pv *PasswordValidator) validateForbiddenPatterns(password string) error {
 func (pv *PasswordValidator) validateComplexity(password string) error {
 	// Check for repeated characters
 	if pv.hasRepeatedChars(password, pv.maxCharRepeat) {
+		log.Debug("Password has repeated characters")
 		return models.ErrPasswordTooWeak
 	}
 
 	// Check for sequential characters
 	if pv.hasSequentialChars(password, pv.maxSequentialChars) {
+		log.Debug("Password has sequential characters")
 		return models.ErrPasswordTooWeak
 	}
 
 	// Check for keyboard patterns
 	if pv.hasKeyboardPattern(password) {
+		log.Debug("Password has keyboard patterns")
 		return models.ErrPasswordTooWeak
 	}
 

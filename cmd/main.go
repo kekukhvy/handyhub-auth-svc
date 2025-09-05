@@ -12,7 +12,7 @@ var log = *logrus.StandardLogger()
 
 func main() {
 	cfg := config.Load()
-	logger.Init(cfg.Logs.Level, cfg.Logs.Path)
+	logger.Init(cfg)
 
 	log.Infof("Application %s is starting....", cfg.App.Name)
 

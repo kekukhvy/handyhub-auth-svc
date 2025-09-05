@@ -39,6 +39,9 @@ func NewUserService(
 }
 
 func (s *userService) CreateUser(ctx context.Context, user *models.User) (*models.User, error) {
+
+	log.WithField("email", user.Email).Debug("CreateUser")
+
 	if err := s.ValidateUser(user); err != nil {
 		return nil, err
 	}
@@ -51,29 +54,27 @@ func (s *userService) CreateUser(ctx context.Context, user *models.User) (*model
 		return nil, err
 	}
 
-	log.WithField("user_id", createdUser.ID.Hex()).
-		WithField("email", createdUser.Email).
-		Info("User created successfully")
-
+	log.WithField("email", createdUser.Email).Debug("User created successfully")
 	return createdUser, nil
 }
 
 func (s *userService) ValidateUser(user *models.User) error {
+	log.WithField("email", user.Email).Debug("Validating user")
 	if user == nil {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	// Validate required fields
 	if strings.TrimSpace(user.FirstName) == "" {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	if strings.TrimSpace(user.LastName) == "" {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	if strings.TrimSpace(user.Email) == "" {
-		return models.ErrInvalidParams
+		return models.ErrInvalidValue
 	}
 
 	// Validate email format using validator
@@ -92,10 +93,12 @@ func (s *userService) ValidateUser(user *models.User) error {
 		return models.ErrInvalidStatus
 	}
 
+	log.WithField("email", user.Email).Debug("User validated successfully")
 	return nil
 }
 
 func (s *userService) IsEmailUnique(ctx context.Context, email string, excludeUserID *primitive.ObjectID) (bool, error) {
+	log.WithField("email", email).Debug("Checking if email is unique")
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
@@ -106,6 +109,7 @@ func (s *userService) IsEmailUnique(ctx context.Context, email string, excludeUs
 
 	// If we found a user with this email, check if it's the same user we're excluding
 	if excludeUserID != nil && user.ID == *excludeUserID {
+		log.WithField("email", email).Debug("Email belongs to the same user, considered unique for update")
 		return true, nil // Same user, so email is "unique" for update purposes
 	}
 
@@ -113,7 +117,9 @@ func (s *userService) IsEmailUnique(ctx context.Context, email string, excludeUs
 }
 
 func (s *userService) SendVerificationEmail(ctx context.Context, userID primitive.ObjectID) error {
+
 	user, err := s.userRepo.GetByID(ctx, userID)
+	log.WithField("email", user.Email).Info("Sending verification email")
 	if err != nil {
 		return err
 	}
@@ -129,5 +135,6 @@ func (s *userService) SendVerificationEmail(ctx context.Context, userID primitiv
 		return err
 	}
 
+	log.WithField("user_id", userID.Hex()).Info("Verification email sent successfully")
 	return s.emailSvc.SendVerificationEmail(user.Email, user.FirstName, token)
 }

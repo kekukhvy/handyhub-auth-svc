@@ -51,8 +51,9 @@ type Application struct {
 }
 
 type LogsSettings struct {
-	Level string `mapstructure:"level"`
-	Path  string `mapstructure:"log-path"`
+	Level            string `mapstructure:"level"`
+	Path             string `mapstructure:"log-path"`
+	EnableJSONOutput bool   `mapstructure:"enable-json-output"`
 }
 
 type SecuritySettings struct {

@@ -39,7 +39,9 @@ var (
 
 // Validation errors
 var (
-	ErrInvalidParams    = errors.New("invalid parameters")
+	ErrInvalidValue     = errors.New("invalid value")
+	ErrValueTooLong     = errors.New("value too long")
+	ErrValueTooShort    = errors.New("value too short")
 	ErrInvalidEmail     = errors.New("invalid email format")
 	ErrInvalidPassword  = errors.New("invalid password format")
 	ErrPasswordTooShort = errors.New("password too short")

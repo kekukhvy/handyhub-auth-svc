@@ -3,6 +3,7 @@ package server
 import (
 	"handyhub-auth-svc/clients"
 	"handyhub-auth-svc/internal/dependency"
+	"handyhub-auth-svc/internal/middleware"
 
 	"time"
 
@@ -13,6 +14,7 @@ import (
 func SetupRoutes(deps *dependency.Manager) {
 	router := deps.Router
 	router.Use(enableCORS)
+	router.Use(middleware.RequestLoggingMiddleware())
 
 	setupHealthEndpoint(deps)
 	setupPublicRoutes(router, deps)

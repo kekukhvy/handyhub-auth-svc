@@ -23,8 +23,9 @@ app:
   version: "1.0.0"
 
 logs:
-  level: "info"
+  level: "debug"
   log-path: "logs/sys.log"
+  enable-json-output: true
 
 security:
   jwt-key: "your-secret-jwt-key"
@@ -38,7 +39,7 @@ security:
     require-number: true
     require-special: false
     max-char-repeats: 5
-    max-sequential-chars: 3
+    max-sequential-chars: 5
 
 rate-limit:
   login-attempts: 5
@@ -50,7 +51,7 @@ email-service:
   frontend-url: "http://localhost:4200"
 
 cache:
-    expiration-minutes: 60
+  expiration-minutes: 60
 
 queue:
   rabbitmq:

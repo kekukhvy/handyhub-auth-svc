@@ -11,6 +11,8 @@ import (
 	"github.com/streadway/amqp"
 )
 
+var log = logrus.StandardLogger()
+
 type Service interface {
 	SendVerificationEmail(userEmail, firstName, verificationToken string) error
 }
@@ -53,6 +55,8 @@ func NewEmailService(cfg *config.Configuration, rabbitMQ *clients.RabbitMQ) Serv
 }
 
 func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationToken string) error {
+	log.WithField("email", userEmail).Debug("Queueing verification email")
+
 	subject, htmlBody, err := RenderVerificationEmail(firstName, verificationToken, s.config.EmailService.FrontendURL)
 	if err != nil {
 		return fmt.Errorf("failed to render email template: %w", err)
@@ -79,8 +83,8 @@ func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationT
 	}
 
 	err = s.rabbitMQ.Channel.Publish(
-		s.config.RabbitMQ.Exchange,
-		s.config.RabbitMQ.RoutingKey,
+		s.config.Queue.RabbitMQ.Exchange,
+		s.config.Queue.RabbitMQ.RoutingKey,
 		false,
 		false,
 		amqp.Publishing{
@@ -94,10 +98,7 @@ func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationT
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 
-	logrus.WithFields(logrus.Fields{
-		"to":      userEmail,
-		"subject": subject,
-	}).Info("Verification email published to queue")
+	log.WithField("email", userEmail).Info("Verification email queued successfully")
 
 	return nil
 }

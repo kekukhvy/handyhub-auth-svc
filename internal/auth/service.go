@@ -40,6 +40,7 @@ func NewAuthService(validator *validators.RequestValidator, userService user.Ser
 // Register creates a new user account
 func (s *authService) Register(ctx context.Context, req *models.RegisterRequest) (*models.User, error) {
 	// Validate request
+	log.WithField("email", req.Email).Info("Registering new user")
 	if validationErrors := s.validator.ValidateRegisterRequest(req); validationErrors.HasErrors() {
 		log.WithField("errors", validationErrors.Errors).Error("Registration validation failed")
 		return nil, models.ErrInvalidRequest
@@ -75,13 +76,9 @@ func (s *authService) Register(ctx context.Context, req *models.RegisterRequest)
 	}
 
 	// Cache user profile
-	s.cacheService.CacheUserProfile(ctx, createdUser.ToProfile(), s.cfg.Cache.ExpirationMinutes)
+	s.cacheService.CacheUser(ctx, user, s.cfg.Cache.ExpirationMinutes)
 
-	go s.userService.SendVerificationEmail(ctx, createdUser.ID)
-
-	log.WithField("user_id", createdUser.ID.Hex()).
-		WithField("email", createdUser.Email).
-		Info("User registered successfully")
+	s.userService.SendVerificationEmail(ctx, createdUser.ID)
 
 	return createdUser, nil
 }

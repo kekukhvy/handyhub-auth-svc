@@ -12,7 +12,7 @@ import (
 )
 
 type Service interface {
-	CacheUserProfile(ctx context.Context, profile *models.UserProfile, duration int) error
+	CacheUser(ctx context.Context, user *models.User, duration int) error
 }
 
 var log = logrus.StandardLogger()
@@ -25,22 +25,25 @@ func NewCacheService(client *redis.Client) Service {
 	return &cacheService{client: client}
 }
 
-func (c cacheService) CacheUserProfile(ctx context.Context, profile *models.UserProfile, duration int) error {
-	key := fmt.Sprintf("user:%s", profile.ID.Hex())
+func (c cacheService) CacheUser(ctx context.Context, user *models.User, duration int) error {
+	log.WithField("email", user.Email).Debug("Caching user profile")
+	key := fmt.Sprintf("user:%s", user.ID.Hex())
 
-	data, err := json.Marshal(profile)
+	// Store user profile (without password)
+	userProfile := user.ToProfile()
+	data, err := json.Marshal(userProfile)
 	if err != nil {
-		log.WithError(err).WithField("user_id", profile.ID.Hex()).Error("Failed to marshal user profile for cache")
+		log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to marshal user for cache")
 		return models.ErrRedisSet
 	}
 
 	expiration := time.Duration(duration) * time.Minute
 	err = c.client.Set(ctx, key, data, expiration).Err()
 	if err != nil {
-		log.WithError(err).WithField("user_id", profile.ID.Hex()).Error("Failed to cache user profile")
+		log.WithError(err).WithField("user_id", userProfile.ID.Hex()).Error("Failed to cache user profile")
 		return models.ErrRedisSet
 	}
 
-	log.WithField("user_id", profile.ID.Hex()).Debug("User profile cached successfully")
+	log.WithField("email", userProfile.Email).Debug("User profile cached successfully")
 	return nil
 }
