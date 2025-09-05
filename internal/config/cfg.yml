@@ -1,0 +1,40 @@
+database:
+  url: "mongodb://localhost:27017"
+  dbname: "handyhub"
+  user-collection: "users"
+  session-collection: "sessions"
+  timeout: 10
+
+redis:
+  url: "localhost:6379"
+  password: ""
+  db: 3
+
+server:
+  port: ":8001"
+  mode: "debug"
+  read-timeout: 30
+  write-timeout: 30
+  idle-timeout: 60
+
+app:
+  name: "handyhub-auth-svc"
+  timeout: 30
+
+logs:
+  level: "info"
+  log-path: "logs/sys.log"
+
+security:
+  jwt-key: "your-secret-jwt-key"
+  access-token-expiration: 60  # minutes
+  refresh-token-expiration: 1440  # minutes (24 hours)
+  password-salt-rounds: 12
+
+rate-limit:
+  login-attempts: 5
+  window-minutes: 15
+
+email-service:
+  enabled: false
+  url: "http://localhost:8008"
