@@ -2,91 +2,103 @@ package server
 
 import (
 	"handyhub-auth-svc/internal/config"
+	"handyhub-auth-svc/internal/database"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"github.com/redis/go-redis/v9"
 )
 
-var logger = logrus.StandardLogger()
+type Dependencies struct {
+	Config      *config.Configuration
+	MongoDB     *database.MongoDB
+	RedisClient *redis.Client
+	Router      *gin.Engine
+}
 
-func SetupRoutes(router *gin.Engine, cfg *config.Configuration) {
+func SetupRoutes(router *gin.Engine, cfg *config.Configuration,
+	mongodb *database.MongoDB, redisClient *redis.Client) {
+
 	router.Use(enableCORS)
 
-	// Health endpoint
+	deps := initializeDependencies(cfg, mongodb, redisClient, router)
+	setupHealthEndpoint(deps)
+}
+
+func initializeDependencies(cfg *config.Configuration, mongodb *database.MongoDB,
+	redisClient *redis.Client, router *gin.Engine) *Dependencies {
+
+	return &Dependencies{
+		Config:      cfg,
+		MongoDB:     mongodb,
+		RedisClient: redisClient,
+		Router:      router,
+	}
+}
+
+func setupHealthEndpoint(deps *Dependencies) {
+	router := deps.Router
+	mongodb := deps.MongoDB
+	redisClient := deps.RedisClient
+	cfg := deps.Config
+
 	router.GET("/health", func(c *gin.Context) {
-		logrus.Info("Health check requested")
+		log.Info("Health check endopint requested")
+
+		mongoStatus := "ok"
+		if err := mongodb.Client.Ping(c.Request.Context(), nil); err != nil {
+			mongoStatus = "error: " + err.Error()
+		}
+
+		redisStatus := "ok"
+		if err := redisClient.Ping(c.Request.Context()).Err(); err != nil {
+			redisStatus = "error: " + err.Error()
+		}
+
 		c.JSON(200, gin.H{
-			"status":  "ok",
-			"service": "auth-service",
-			"version": "1.0.0",
+			"status":    "ok",
+			"service":   cfg.App.Name,
+			"version":   cfg.App.Version,
+			"mongodb":   mongoStatus,
+			"redis":     redisStatus,
+			"timestamp": time.Now().UTC().Format("2006-01-02T15:04:05Z07:00"),
 		})
 	})
 
-	// API version group
-	api := router.Group("/api/v1")
-	{
-		api.GET("/status", func(c *gin.Context) {
-			logrus.Info("API status requested")
-			c.JSON(200, gin.H{
-				"api_version": "v1",
-				"status":      "operational",
-				"service":     "handyhub-auth-svc",
-			})
+	router.GET("health/detailed", func(c *gin.Context) {
+		log.Info("Detailed health check endpoint requested")
+
+		c.JSON(200, gin.H{
+			"status":  "operational",
+			"service": cfg.App.Name,
+			"version": cfg.App.Version,
+			"components": gin.H{
+				"database": gin.H{
+					"mongodb": getStatus(isMonoConnected(mongodb, c)),
+					"redis":   getStatus(isRedisConnected(redisClient, c)),
+				},
+				"services": gin.H{
+					"auth":    "operational",
+					"session": "operational",
+					"cache":   "operational",
+				},
+			},
 		})
+	})
+}
+
+func isMonoConnected(mongodb *database.MongoDB, c *gin.Context) bool {
+	if err := mongodb.Client.Ping(c.Request.Context(), nil); err != nil {
+		return false
 	}
+	return true
+}
 
-	// Auth endpoints group (пока заглушки)
-	auth := router.Group("/auth")
-	{
-		auth.POST("/login", func(c *gin.Context) {
-			logger.Info("Login endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Login endpoint - coming soon",
-			})
-		})
-
-		auth.POST("/register", func(c *gin.Context) {
-			logger.Info("Register endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Register endpoint - coming soon",
-			})
-		})
-
-		auth.POST("/logout", func(c *gin.Context) {
-			logger.Info("Logout endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Logout endpoint - coming soon",
-			})
-		})
-
-		auth.POST("/refresh", func(c *gin.Context) {
-			logger.Info("Refresh endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Refresh endpoint - coming soon",
-			})
-		})
-
-		auth.POST("/reset-password", func(c *gin.Context) {
-			logger.Info("Reset password endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Reset password endpoint - coming soon",
-			})
-		})
-
-		auth.GET("/verify-token", func(c *gin.Context) {
-			logger.Info("Verify token endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Verify token endpoint - coming soon",
-			})
-		})
-
-		auth.POST("/change-password", func(c *gin.Context) {
-			logger.Info("Change password endpoint called")
-			c.JSON(200, gin.H{
-				"message": "Change password endpoint - coming soon",
-			})
-		})
+func isRedisConnected(redisClient *redis.Client, c *gin.Context) bool {
+	if err := redisClient.Ping(c.Request.Context()).Err(); err != nil {
+		return false
 	}
+	return true
 }
 
 func enableCORS(c *gin.Context) {
@@ -100,4 +112,11 @@ func enableCORS(c *gin.Context) {
 	}
 
 	c.Next()
+}
+
+func getStatus(b bool) string {
+	if b {
+		return "connected"
+	}
+	return "disconnected"
 }

@@ -20,6 +20,7 @@ server:
 app:
   name: "handyhub-auth-svc"
   timeout: 30
+  version: "1.0.0"
 
 logs:
   level: "info"

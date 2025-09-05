@@ -5,6 +5,7 @@ import (
 	"errors"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/database"
+	redisClient "handyhub-auth-svc/internal/redis"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,9 +19,10 @@ import (
 var log = logrus.StandardLogger()
 
 type Server struct {
-	httpServer *http.Server
-	config     *config.Configuration
-	mongodb    *database.MongoDB
+	httpServer  *http.Server
+	config      *config.Configuration
+	mongodb     *database.MongoDB
+	redisClient *redisClient.RedisClient
 }
 
 func New(cfg *config.Configuration) *Server {
@@ -31,6 +33,10 @@ func New(cfg *config.Configuration) *Server {
 
 func (s *Server) Start() error {
 	if err := s.initMongoDB(); err != nil {
+		return err
+	}
+
+	if err := s.initRedis(); err != nil {
 		return err
 	}
 
@@ -59,11 +65,22 @@ func (s *Server) initMongoDB() error {
 	return nil
 }
 
+func (s *Server) initRedis() error {
+	log.Info("Initializing Redis connection...")
+	redis, err := redisClient.NewRedisClient(s.config)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to initialize Redis")
+		return err
+	}
+	s.redisClient = redis
+	return nil
+}
+
 func (s *Server) setupHTTPServer() error {
 	gin.SetMode(s.config.Server.Mode)
 	router := gin.Default()
 
-	SetupRoutes(router, s.config)
+	SetupRoutes(router, s.config, s.mongodb, s.redisClient.Client)
 
 	s.httpServer = &http.Server{
 		Addr:         s.config.Server.Port,
@@ -91,6 +108,13 @@ func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	if s.redisClient != nil {
+		if err := s.redisClient.Close(); err != nil {
+			log.WithError(err).Error("Error closing Redis connection")
+		} else {
+			log.Info("Redis connection closed")
+		}
+	}
 	if s.mongodb != nil {
 		if err := s.mongodb.Disconnect(ctx); err != nil {
 			log.WithError(err).Error("Error disconnecting MongoDB")

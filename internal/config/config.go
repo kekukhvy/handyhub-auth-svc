@@ -44,6 +44,7 @@ type ServerSettings struct {
 type Application struct {
 	Name    string `mapstructure:"name"`
 	Timeout int    `mapstructure:"timeout"`
+	Version string `mapstructure:"version"`
 }
 
 type LogsSettings struct {
