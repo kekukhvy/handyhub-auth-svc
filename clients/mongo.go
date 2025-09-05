@@ -1,4 +1,4 @@
-package database
+package clients
 
 import (
 	"context"
@@ -14,8 +14,6 @@ type MongoDB struct {
 	Client   *mongo.Client
 	Database *mongo.Database
 }
-
-var log = logrus.StandardLogger()
 
 func NewMongoDB(cfg config.Configuration) (*MongoDB, error) {
 	log.Info("Connecting to MongoDB...")

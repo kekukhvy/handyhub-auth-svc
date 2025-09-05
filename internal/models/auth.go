@@ -50,6 +50,25 @@ type VerifyTokenRequest struct {
 	Token string `json:"token" validate:"required"`
 }
 
+// UserProfile represents public user profile (without sensitive data)
+type UserProfile struct {
+	ID               primitive.ObjectID `json:"id"`
+	FirstName        string             `json:"firstName"`
+	LastName         string             `json:"lastName"`
+	Email            string             `json:"email"`
+	Phone            string             `json:"phone,omitempty"`
+	Role             string             `json:"role"`
+	Status           string             `json:"status"`
+	IsEmailVerified  bool               `json:"isEmailVerified"`
+	RegistrationDate time.Time          `json:"registrationDate"`
+	LastLoginAt      *time.Time         `json:"lastLoginAt,omitempty"`
+	Avatar           *string            `json:"avatar,omitempty"`
+	TimeZone         string             `json:"timeZone"`
+	Language         string             `json:"language"`
+	CreatedAt        time.Time          `json:"createdAt"`
+	UpdatedAt        time.Time          `json:"updatedAt"`
+}
+
 // LoginResponse represents successful login response
 type LoginResponse struct {
 	AccessToken           string       `json:"accessToken"`
@@ -159,21 +178,6 @@ func (c *TokenClaims) IsRefreshToken() bool {
 // IsResetToken checks if token is reset token
 func (c *TokenClaims) IsResetToken() bool {
 	return c.GetTokenType() == TokenTypeReset
-}
-
-// ToUser converts RegisterRequest to User model
-func (r *RegisterRequest) ToUser() *User {
-	user := &User{
-		FirstName: r.FirstName,
-		LastName:  r.LastName,
-		Email:     r.Email,
-		Password:  r.Password,
-		Phone:     r.Phone,
-		Language:  r.Language,
-		TimeZone:  r.TimeZone,
-	}
-	user.SetDefaults()
-	return user
 }
 
 // IsExpired checks if password reset token is expired

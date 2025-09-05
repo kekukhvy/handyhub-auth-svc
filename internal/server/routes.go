@@ -1,45 +1,27 @@
 package server
 
 import (
-	"handyhub-auth-svc/internal/config"
-	"handyhub-auth-svc/internal/database"
+	"handyhub-auth-svc/clients"
+	"handyhub-auth-svc/internal/dependency"
+
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
 
-type Dependencies struct {
-	Config      *config.Configuration
-	MongoDB     *database.MongoDB
-	RedisClient *redis.Client
-	Router      *gin.Engine
-}
-
-func SetupRoutes(router *gin.Engine, cfg *config.Configuration,
-	mongodb *database.MongoDB, redisClient *redis.Client) {
-
+func SetupRoutes(deps *dependency.Manager) {
+	router := deps.Router
 	router.Use(enableCORS)
 
-	deps := initializeDependencies(cfg, mongodb, redisClient, router)
 	setupHealthEndpoint(deps)
+	setupPublicRoutes(router, deps)
 }
 
-func initializeDependencies(cfg *config.Configuration, mongodb *database.MongoDB,
-	redisClient *redis.Client, router *gin.Engine) *Dependencies {
-
-	return &Dependencies{
-		Config:      cfg,
-		MongoDB:     mongodb,
-		RedisClient: redisClient,
-		Router:      router,
-	}
-}
-
-func setupHealthEndpoint(deps *Dependencies) {
+func setupHealthEndpoint(deps *dependency.Manager) {
 	router := deps.Router
-	mongodb := deps.MongoDB
-	redisClient := deps.RedisClient
+	mongodb := deps.Mongodb
+	redisClient := deps.Redis
 	cfg := deps.Config
 
 	router.GET("/health", func(c *gin.Context) {
@@ -87,7 +69,24 @@ func setupHealthEndpoint(deps *Dependencies) {
 	})
 }
 
-func isMonoConnected(mongodb *database.MongoDB, c *gin.Context) bool {
+func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
+	// API status endpoint
+	router.GET("/api/v1/status", func(c *gin.Context) {
+		log.Info("API status requested")
+		c.JSON(200, gin.H{
+			"api_version": "v1",
+			"status":      "operational",
+			"service":     "handyhub-auth-svc",
+		})
+	})
+
+	// Authentication endpoints (public)
+	auth := router.Group("/auth")
+	{
+		auth.POST("/register", deps.AuthHandler.Register)
+	}
+}
+func isMonoConnected(mongodb *clients.MongoDB, c *gin.Context) bool {
 	if err := mongodb.Client.Ping(c.Request.Context(), nil); err != nil {
 		return false
 	}

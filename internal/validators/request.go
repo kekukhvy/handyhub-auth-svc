@@ -21,8 +21,8 @@ func NewRequestValidator(cfg *config.Configuration) *RequestValidator {
 	// Phone regex for international format (E.164)
 	phoneRegex := regexp.MustCompile(`^\+?[1-9]\d{1,14}$`)
 
-	// Name regex allowing letters, spaces, hyphens, apostrophes, and accented characters
-	nameRegex := regexp.MustCompile(`^[a-zA-ZÀ-ÿ\u0100-\u017F\u0180-\u024F\u1E00-\u1EFF\s\-'\.]+$`)
+	// Name regex allowing Unicode letters, spaces, hyphens, apostrophes, and periods
+	nameRegex := regexp.MustCompile(`^[\p{L}\s\-'.]+$`)
 
 	return &RequestValidator{
 		emailValidator:    NewEmailValidator(),

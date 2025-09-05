@@ -19,7 +19,7 @@ server:
 
 app:
   name: "handyhub-auth-svc"
-  timeout: 30
+  timeout: 10
   version: "1.0.0"
 
 logs:
@@ -45,5 +45,30 @@ rate-limit:
   window-minutes: 15
 
 email-service:
-  enabled: false
+  enabled: true
   url: "http://localhost:8008"
+  frontend-url: "http://localhost:4200"
+
+cache:
+    expiration-minutes: 60
+
+queue:
+  rabbitmq:
+    url: "amqp://guest:guest@localhost:5672/"
+    exchange: "handyhub"
+    exchange-type: "topic"
+    email-queue: "email_queue"
+    prefetch-count: 1
+    prefetch-size: 0
+    global: false
+    reconnect-delay: 5
+    timeout: 10
+    routing-key: "email.send"
+    durable: true
+    auto-delete: false
+    internal: false
+    no-wait: false
+    exclusive: false
+    auto-ack: false
+    no-local: false
+    consumer: "email_consumer"

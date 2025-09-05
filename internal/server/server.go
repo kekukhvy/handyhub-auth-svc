@@ -3,9 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"handyhub-auth-svc/clients"
 	"handyhub-auth-svc/internal/config"
-	"handyhub-auth-svc/internal/database"
-	redisClient "handyhub-auth-svc/internal/redis"
+	"handyhub-auth-svc/internal/dependency"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,8 +21,9 @@ var log = logrus.StandardLogger()
 type Server struct {
 	httpServer  *http.Server
 	config      *config.Configuration
-	mongodb     *database.MongoDB
-	redisClient *redisClient.RedisClient
+	mongodb     *clients.MongoDB
+	redisClient *clients.RedisClient
+	rabbitMQ    *clients.RabbitMQ
 }
 
 func New(cfg *config.Configuration) *Server {
@@ -44,6 +45,10 @@ func (s *Server) Start() error {
 		return err
 	}
 
+	if err := s.initRabbitMQ(); err != nil {
+		return err
+	}
+
 	go func() {
 		log.Infof("Auth Service starting on port %s", s.config.Server.Port)
 		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -56,7 +61,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) initMongoDB() error {
-	mongodb, err := database.NewMongoDB(*s.config)
+	mongodb, err := clients.NewMongoDB(*s.config)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to initialize MongoDB")
 		return err
@@ -67,7 +72,7 @@ func (s *Server) initMongoDB() error {
 
 func (s *Server) initRedis() error {
 	log.Info("Initializing Redis connection...")
-	redis, err := redisClient.NewRedisClient(s.config)
+	redis, err := clients.NewRedisClient(s.config)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to initialize Redis")
 		return err
@@ -76,11 +81,26 @@ func (s *Server) initRedis() error {
 	return nil
 }
 
+func (s *Server) initRabbitMQ() error {
+	rabbitmq, err := clients.NewRabbitMQ(&s.config.Queue.RabbitMQ)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to initialize RabbitMQ")
+		return err
+	}
+	s.rabbitMQ = rabbitmq
+	if err := rabbitmq.SetupQueue(); err != nil {
+		log.WithError(err).Fatal("Failed to setup RabbitMQ queue")
+		return err
+	}
+	return nil
+}
+
 func (s *Server) setupHTTPServer() error {
 	gin.SetMode(s.config.Server.Mode)
 	router := gin.Default()
 
-	SetupRoutes(router, s.config, s.mongodb, s.redisClient.Client)
+	dependencyManager := dependency.NewDependencyManager(router, s.config, s.mongodb, s.redisClient.Client, s.rabbitMQ)
+	SetupRoutes(dependencyManager)
 
 	s.httpServer = &http.Server{
 		Addr:         s.config.Server.Port,
@@ -115,6 +135,15 @@ func (s *Server) Shutdown() {
 			log.Info("Redis connection closed")
 		}
 	}
+
+	if s.rabbitMQ != nil {
+		if err := s.rabbitMQ.Close(); err != nil {
+			log.WithError(err).Error("Error closing RabbitMQ connection")
+		} else {
+			log.Info("RabbitMQ connection closed")
+		}
+	}
+
 	if s.mongodb != nil {
 		if err := s.mongodb.Disconnect(ctx); err != nil {
 			log.WithError(err).Error("Error disconnecting MongoDB")

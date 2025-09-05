@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Email Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        .link-text {
+            word-break: break-all;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Welcome to HandyHub!</h1>
+    </div>
+
+    <p>Hi {{.FirstName}},</p>
+
+    <p>Thank you for registering with HandyHub. Please verify your email address by clicking the button below:</p>
+
+    <p style="text-align: center; margin: 30px 0;">
+        <a href="{{.VerificationLink}}" class="button">Verify Email Address</a>
+    </p>
+
+    <p>If the button doesn't work, copy and paste this link into your browser:</p>
+    <div class="link-text">{{.VerificationLink}}</div>
+
+    <p><strong>Important:</strong> This verification link will expire in 24 hours.</p>
+
+    <div class="footer">
+        <p>If you didn't create an account with HandyHub, please ignore this email.</p>
+        <p>&copy; 2025 HandyHub. All rights reserved.</p>
+    </div>
+</div>
+</body>
+</html>

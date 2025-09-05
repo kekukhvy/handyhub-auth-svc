@@ -17,6 +17,9 @@ type Configuration struct {
 	Security     SecuritySettings  `mapstructure:"security"`
 	RateLimit    RateLimitSettings `mapstructure:"rate-limit"`
 	EmailService EmailService      `mapstructure:"email-service"`
+	Cache        CacheConfig       `mapstructure:"cache"`
+	Queue        QueueConfig       `mapstructure:"queue"`
+	RabbitMQ     RabbitMQConfig    `mapstructure:"rabbitmq"`
 }
 
 type Database struct {
@@ -75,8 +78,39 @@ type RateLimitSettings struct {
 }
 
 type EmailService struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Url     string `mapstructure:"url"`
+	Enabled     bool   `mapstructure:"enabled"`
+	Url         string `mapstructure:"url"`
+	FrontendURL string `mapstructure:"frontend-url"`
+	DefaultFrom string `mapstructure:"default-from"`
+}
+
+type CacheConfig struct {
+	ExpirationMinutes int `mapstructure:"expiration-minutes"`
+}
+
+type QueueConfig struct {
+	RabbitMQ RabbitMQConfig `mapstructure:"rabbitmq"`
+}
+
+type RabbitMQConfig struct {
+	Url            string `mapstructure:"url"`
+	Exchange       string `mapstructure:"exchange"`
+	ExchangeType   string `mapstructure:"exchange-type"`
+	EmailQueue     string `mapstructure:"email-queue"`
+	PrefetchCount  int    `mapstructure:"prefetch-count"`
+	ReconnectDelay int    `mapstructure:"reconnect-delay"`
+	Timeout        int    `mapstructure:"timeout"`
+	RoutingKey     string `mapstructure:"routing-key"`
+	PrefetchSize   int    `mapstructure:"prefetch-size"`
+	Global         bool   `mapstructure:"global"`
+	Durable        bool   `mapstructure:"durable"`
+	AutoDelete     bool   `mapstructure:"auto-delete"`
+	Internal       bool   `mapstructure:"internal"`
+	NoWait         bool   `mapstructure:"no-wait"`
+	Exclusive      bool   `mapstructure:"exclusive"`
+	AutoAck        bool   `mapstructure:"auto-ack"`
+	NoLocal        bool   `mapstructure:"no-local"`
+	Consumer       string `mapstructure:"consumer"`
 }
 
 func Load() *Configuration {
