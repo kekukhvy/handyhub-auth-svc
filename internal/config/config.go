@@ -52,12 +52,22 @@ type LogsSettings struct {
 }
 
 type SecuritySettings struct {
-	JwtKey                 string `mapstructure:"jwt-key"`
-	AccessTokenExpiration  int    `mapstructure:"access-token-expiration"`
-	RefreshTokenExpiration int    `mapstructure:"refresh-token-expiration"`
-	PasswordSaltRounds     int    `mapstructure:"password-salt-rounds"`
+	JwtKey                 string             `mapstructure:"jwt-key"`
+	AccessTokenExpiration  int                `mapstructure:"access-token-expiration"`
+	RefreshTokenExpiration int                `mapstructure:"refresh-token-expiration"`
+	PasswordSaltRounds     int                `mapstructure:"password-salt-rounds"`
+	PasswordValidation     PasswordValidation `mapstructure:"password-validation"`
 }
 
+type PasswordValidation struct {
+	MinLength          int  `mapstructure:"min-length"`
+	RequireUpper       bool `mapstructure:"require-upper"`
+	RequireLower       bool `mapstructure:"require-lower"`
+	RequireDigit       bool `mapstructure:"require-digit"`
+	RequireSpecial     bool `mapstructure:"require-special"`
+	MaxCharRepeats     int  `mapstructure:"max-char-repeats"`
+	MaxSequentialChars int  `mapstructure:"max-sequential-chars"`
+}
 type RateLimitSettings struct {
 	LoginAttempts int `mapstructure:"login-attempts"`
 	WindowMinutes int `mapstructure:"window-minutes"`

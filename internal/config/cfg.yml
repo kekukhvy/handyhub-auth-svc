@@ -30,6 +30,14 @@ security:
   access-token-expiration: 60  # minutes
   refresh-token-expiration: 1440  # minutes (24 hours)
   password-salt-rounds: 12
+  password-validation:
+    min-length: 6
+    require-uppercase: true
+    require-lowercase: true
+    require-number: true
+    require-special: false
+    max-char-repeats: 5
+    max-sequential-chars: 3
 
 rate-limit:
   login-attempts: 5
