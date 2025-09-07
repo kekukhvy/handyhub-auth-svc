@@ -1,53 +1,59 @@
 package session
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"handyhub-auth-svc/clients"
+	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+var log = logrus.StandardLogger()
+
 // Manager handles session operations and lifecycle
 type Manager struct {
-	accessTokenExpiration  time.Duration
-	refreshTokenExpiration time.Duration
+	repository Repository
 }
 
 // NewManager creates a new session manager with specified token expirations
-func NewManager(accessTokenExp, refreshTokenExp int) *Manager {
+func NewManager(db *clients.MongoDB, cfg *config.Configuration) *Manager {
 	return &Manager{
-		accessTokenExpiration:  time.Duration(accessTokenExp) * time.Minute,
-		refreshTokenExpiration: time.Duration(refreshTokenExp) * time.Minute,
+		repository: NewSessionRepository(db, cfg.Database.SessionCollection),
 	}
 }
 
 // CreateSession creates a new session for the specified user
-func (m *Manager) CreateSession(userID primitive.ObjectID, userAgent, ipAddress string) (*models.Session, error) {
+func (m *Manager) CreateSession(ctx context.Context, userID primitive.ObjectID, userAgent, ipAddress string) (*models.Session, error) {
 	now := time.Now()
 	sessionID := m.generateSessionID()
-
-	refreshToken, err := m.generateRefreshToken()
-	if err != nil {
-		return nil, models.ErrSessionCreating
-	}
 
 	session := &models.Session{
 		SessionID:    sessionID,
 		UserID:       userID,
-		RefreshToken: refreshToken,
 		UserAgent:    userAgent,
 		IPAddress:    ipAddress,
 		CreatedAt:    now,
-		ExpiresAt:    now.Add(m.refreshTokenExpiration),
 		LastActiveAt: now,
 		IsActive:     true,
 		DeviceInfo:   ParseDeviceInfo(userAgent),
 	}
 
+	session, err := m.repository.Create(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
 	return session, nil
+}
+
+func (m *Manager) Update(ctx context.Context, session *models.Session) error {
+	return m.repository.Update(ctx, session)
 }
 
 // ValidateSession validates session and returns status information
@@ -97,13 +103,6 @@ func (m *Manager) IsRefreshTokenValid(session *models.Session, refreshToken stri
 
 	// Check if refresh token matches
 	return session.RefreshToken == refreshToken
-}
-
-// ShouldRefreshToken determines if access token should be refreshed
-func (m *Manager) ShouldRefreshToken(tokenAge time.Duration) bool {
-	// Refresh if token is more than 75% through its lifetime
-	threshold := m.accessTokenExpiration * 3 / 4
-	return tokenAge > threshold
 }
 
 // GetSessionAge returns session age in various time units

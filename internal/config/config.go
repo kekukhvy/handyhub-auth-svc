@@ -62,6 +62,7 @@ type SecuritySettings struct {
 	RefreshTokenExpiration int                `mapstructure:"refresh-token-expiration"`
 	PasswordSaltRounds     int                `mapstructure:"password-salt-rounds"`
 	PasswordValidation     PasswordValidation `mapstructure:"password-validation"`
+	LoginRateLimit         int                `mapstructure:"login-rate-limit"`
 }
 
 type PasswordValidation struct {

@@ -32,6 +32,7 @@ security:
   access-token-expiration: 60  # minutes
   refresh-token-expiration: 1440  # minutes (24 hours)
   password-salt-rounds: 12
+  login-rate-limit: 5  
   password-validation:
     min-length: 6
     require-uppercase: true

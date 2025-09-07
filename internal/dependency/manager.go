@@ -6,6 +6,7 @@ import (
 	"handyhub-auth-svc/internal/cache"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/email"
+	"handyhub-auth-svc/internal/session"
 	"handyhub-auth-svc/internal/user"
 	"handyhub-auth-svc/internal/validators"
 
@@ -33,10 +34,11 @@ func NewDependencyManager(router *gin.Engine,
 	rabbitMQ *clients.RabbitMQ) *Manager {
 	requestValidator := validators.NewRequestValidator(cfg)
 	emailService := email.NewEmailService(cfg, rabbitMQ)
+	sessionManager := session.NewManager(mongodb, cfg)
 	userRepository := user.NewUserRepository(mongodb, cfg.Database.UserCollection)
 	cacheService := cache.NewCacheService(redisClient)
-	userService := user.NewUserService(userRepository, emailService, &cfg.Cache)
-	authService := auth.NewAuthService(requestValidator, userService, cacheService, cfg)
+	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
+	authService := auth.NewAuthService(requestValidator, userService, cacheService, cfg, sessionManager)
 	authHandler := auth.NewAuthHandler(cfg, authService)
 	return &Manager{
 		Router:         router,

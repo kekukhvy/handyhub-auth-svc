@@ -5,6 +5,7 @@ import (
 	"errors"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
+	"handyhub-auth-svc/internal/session"
 	"net/http"
 	"time"
 
@@ -58,4 +59,54 @@ func (h *Handler) Register(c *gin.Context) {
 		Info("User registered successfully")
 
 	c.JSON(http.StatusCreated, models.NewSuccessResponse(models.MessageRegistrationSuccess, user.ToProfile()))
+}
+
+// Login handles user authentication
+func (h *Handler) Login(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	var req models.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.WithError(err).Error("Failed to bind login request")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidRequest,
+			"Invalid request format",
+		))
+		return
+	}
+
+	// Extract client info for session
+	ipAddress := session.ExtractIPAddress(c.Request)
+	userAgent := session.ExtractUserAgent(c.Request)
+
+	// Add client info to context for auth service
+	c.Set("client_ip", ipAddress)
+	c.Set("user_agent", userAgent)
+
+	// Authenticate user
+	loginResponse, err := h.authService.Login(ctx, &req)
+	if err != nil {
+		log.WithError(err).WithField("email", req.Email).Error("Login failed")
+
+		switch err {
+		case models.ErrInvalidCredentials:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, models.MessageInvalidCredentials))
+		case models.ErrUserInactive:
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(err, models.MessageUserInactive))
+		case models.ErrEmailNotVerified:
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(err, models.MessageEmailNotVerified))
+		case models.ErrLoginAttemptsExceeded:
+			c.JSON(http.StatusTooManyRequests, models.NewErrorResponse(err, "Too many login attempts. Please try again later."))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.WithField("user_id", loginResponse.User.ID.Hex()).
+		WithField("session_id", loginResponse.SessionID).
+		Info("User logged in successfully")
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageLoginSuccess, loginResponse))
 }

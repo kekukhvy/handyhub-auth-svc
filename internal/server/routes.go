@@ -86,6 +86,7 @@ func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
 	auth := router.Group("/auth")
 	{
 		auth.POST("/register", deps.AuthHandler.Register)
+		auth.POST("/login", deps.AuthHandler.Login)
 	}
 }
 func isMonoConnected(mongodb *clients.MongoDB, c *gin.Context) bool {

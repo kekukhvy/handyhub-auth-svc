@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"handyhub-auth-svc/internal/cache"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/email"
 	"handyhub-auth-svc/internal/models"
@@ -19,22 +20,36 @@ type Service interface {
 	ValidateUser(user *models.User) error
 	IsEmailUnique(ctx context.Context, email string, excludeUserID *primitive.ObjectID) (bool, error)
 	SendVerificationEmail(ctx context.Context, userID primitive.ObjectID) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error
+	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
 }
 
 type userService struct {
-	userRepo Repository
-	emailSvc email.Service
-	cfg      *config.CacheConfig
+	userRepo     Repository
+	emailSvc     email.Service
+	cacheService cache.Service
+	cfg          *config.CacheConfig
+}
+
+func (s *userService) UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error {
+	return s.userRepo.UpdateLastLogin(ctx, userID)
+}
+
+func (s *userService) IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error {
+	return s.userRepo.IncrementFailedLogin(ctx, userID)
 }
 
 func NewUserService(
 	userRepo Repository,
 	emailService email.Service,
-	cfg *config.CacheConfig) Service {
+	cfg *config.CacheConfig,
+	cacheService cache.Service) Service {
 	return &userService{
-		userRepo: userRepo,
-		emailSvc: emailService,
-		cfg:      cfg,
+		userRepo:     userRepo,
+		emailSvc:     emailService,
+		cfg:          cfg,
+		cacheService: cacheService,
 	}
 }
 
@@ -137,4 +152,17 @@ func (s *userService) SendVerificationEmail(ctx context.Context, userID primitiv
 
 	log.WithField("user_id", userID.Hex()).Info("Verification email sent successfully")
 	return s.emailSvc.SendVerificationEmail(user.Email, user.FirstName, token)
+}
+
+func (s *userService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		log.WithError(err).WithField("email", email).Error("Failed to get user by email")
+		return nil, err
+	}
+
+	// Cache user profile
+	s.cacheService.CacheUser(ctx, user, 30) // Shorter cache for email lookups
+
+	return user, nil
 }

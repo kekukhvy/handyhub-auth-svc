@@ -20,6 +20,8 @@ type Repository interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	GetByID(ctx context.Context, id primitive.ObjectID) (*models.User, error)
 	SaveVerificationToken(ctx context.Context, userID primitive.ObjectID, token string, expiresAt time.Time) error
+	IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error
+	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
 }
 
 type userRepository struct {
@@ -118,4 +120,54 @@ func (r *userRepository) SaveVerificationToken(ctx context.Context, userID primi
 	_, err := r.collection.UpdateOne(ctx, filter, update)
 	log.WithField("user_id", userID.Hex()).Debug("Verification token saved to db successfully")
 	return err
+}
+
+func (r *userRepository) IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error {
+	now := time.Now()
+	filter := bson.M{
+		"_id":        userID,
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	update := bson.M{
+		"$inc": bson.M{"failed_login_count": 1},
+		"$set": bson.M{
+			"last_failed_login_at": &now,
+			"updated_at":           now,
+		},
+	}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to increment failed login")
+		return models.ErrDatabaseUpdate
+	}
+
+	return nil
+}
+
+func (r *userRepository) UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error {
+	now := time.Now()
+	filter := bson.M{
+		"_id":        userID,
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"last_login_at":        &now,
+			"last_active_at":       &now,
+			"failed_login_count":   0,
+			"last_failed_login_at": nil,
+			"updated_at":           now,
+		},
+	}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to update last login")
+		return models.ErrDatabaseUpdate
+	}
+
+	return nil
 }

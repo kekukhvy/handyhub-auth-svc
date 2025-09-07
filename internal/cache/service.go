@@ -3,8 +3,10 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"handyhub-auth-svc/internal/models"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,6 +15,10 @@ import (
 
 type Service interface {
 	CacheUser(ctx context.Context, user *models.User, duration int) error
+	CheckRateLimit(ctx context.Context, key string, limit int) (bool, error)
+	IncrementRateLimit(ctx context.Context, key string, window int) error
+	ResetFailedLoginAttempts(ctx context.Context, key string) error
+	CacheActiveSession(ctx context.Context, session *models.Session) error
 }
 
 var log = logrus.StandardLogger()
@@ -25,7 +31,7 @@ func NewCacheService(client *redis.Client) Service {
 	return &cacheService{client: client}
 }
 
-func (c cacheService) CacheUser(ctx context.Context, user *models.User, duration int) error {
+func (c *cacheService) CacheUser(ctx context.Context, user *models.User, duration int) error {
 	log.WithField("email", user.Email).Debug("Caching user profile")
 	key := fmt.Sprintf("user:%s", user.ID.Hex())
 
@@ -45,5 +51,80 @@ func (c cacheService) CacheUser(ctx context.Context, user *models.User, duration
 	}
 
 	log.WithField("email", userProfile.Email).Debug("User profile cached successfully")
+	return nil
+}
+
+func (c *cacheService) CheckRateLimit(ctx context.Context, key string, limit int) (bool, error) {
+	rateLimitKey := fmt.Sprintf("rate_limit:%s", key)
+
+	current, err := c.client.Get(ctx, rateLimitKey).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil // No previous attempts
+		}
+		log.WithError(err).WithField("key", key).Error("Failed to check rate limit")
+		return false, models.ErrRedisGet
+	}
+
+	count, err := strconv.Atoi(current)
+	if err != nil {
+		log.WithError(err).WithField("key", key).Error("Failed to parse rate limit count")
+		return false, models.ErrRedisGet
+	}
+
+	return count >= limit, nil
+}
+
+func (c *cacheService) IncrementRateLimit(ctx context.Context, key string, window int) error {
+	rateLimitKey := fmt.Sprintf("rate_limit:%s", key)
+
+	pipe := c.client.TxPipeline()
+	pipe.Incr(ctx, rateLimitKey)
+	pipe.Expire(ctx, rateLimitKey, time.Duration(window)*time.Second)
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		log.WithError(err).WithField("key", key).Error("Failed to increment rate limit")
+		return models.ErrRedisSet
+	}
+
+	return nil
+}
+
+func (c *cacheService) ResetFailedLoginAttempts(ctx context.Context, key string) error {
+	rateLimitKey := fmt.Sprintf("rate_limit:%s", key)
+
+	err := c.client.Del(ctx, rateLimitKey).Err()
+	if err != nil {
+		log.WithError(err).WithField("key", key).Error("Failed to reset failed login attempts")
+		return models.ErrRedisDelete
+	}
+
+	return nil
+}
+
+func (c *cacheService) CacheActiveSession(ctx context.Context, session *models.Session) error {
+	key := fmt.Sprintf("session:%s", session.SessionID)
+	activeSession := session.ToActiveSession()
+
+	data, err := json.Marshal(activeSession)
+	if err != nil {
+		log.WithError(err).WithField("session_id", session.SessionID).Error("Failed to marshal session for cache")
+		return models.ErrRedisSet
+	}
+
+	expiration := time.Until(session.ExpiresAt)
+	if expiration <= 0 {
+		log.WithField("session_id", session.SessionID).Warn("Session already expired, not caching")
+		return nil
+	}
+
+	err = c.client.Set(ctx, key, data, expiration).Err()
+	if err != nil {
+		log.WithError(err).WithField("session_id", session.SessionID).Error("Failed to cache session")
+		return models.ErrRedisSet
+	}
+
+	log.WithField("session_id", session.SessionID).Debug("Session cached successfully")
 	return nil
 }
