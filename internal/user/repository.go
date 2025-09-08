@@ -22,6 +22,8 @@ type Repository interface {
 	SaveVerificationToken(ctx context.Context, userID primitive.ObjectID, token string, expiresAt time.Time) error
 	IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error
 	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
+	GetByVerificationToken(ctx context.Context, token string) (*models.User, error)
+	VerifyEmail(ctx context.Context, userID primitive.ObjectID) error
 }
 
 type userRepository struct {
@@ -169,5 +171,65 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, userID primitive.O
 		return models.ErrDatabaseUpdate
 	}
 
+	return nil
+}
+
+func (r *userRepository) GetByVerificationToken(ctx context.Context, token string) (*models.User, error) {
+	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Debug("Fetching user by verification token from db")
+
+	var user models.User
+	filter := bson.M{
+		"verification_token": token,
+		"deleted_at":         bson.M{"$exists": false},
+	}
+
+	err := r.collection.FindOne(ctx, filter).Decode(&user)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			log.Debug("User not found by verification token")
+			return nil, models.ErrUserNotFound
+		}
+		log.WithError(err).Error("Failed to get user by verification token")
+		return nil, models.ErrDatabaseQuery
+	}
+
+	log.WithField("email", user.Email).Debug("User fetched by verification token from db successfully")
+	return &user, nil
+}
+
+func (r *userRepository) VerifyEmail(ctx context.Context, userID primitive.ObjectID) error {
+	log.WithField("user_id", userID.Hex()).Debug("Verifying email in database")
+
+	now := time.Now()
+	filter := bson.M{
+		"_id":        userID,
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"is_email_verified": true,
+			"email_verified_at": &now,
+			"status":            models.StatusActive, // Activate user after email verification
+			"updated_at":        now,
+		},
+		"$unset": bson.M{
+			"verification_token":   "",
+			"verification_expires": "",
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to verify email in database")
+		return models.ErrDatabaseUpdate
+	}
+
+	if result.MatchedCount == 0 {
+		log.WithField("user_id", userID.Hex()).Error("User not found for email verification")
+		return models.ErrUserNotFound
+	}
+
+	log.WithField("user_id", userID.Hex()).Info("Email verified in database successfully")
 	return nil
 }

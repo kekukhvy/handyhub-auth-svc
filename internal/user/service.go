@@ -23,6 +23,8 @@ type Service interface {
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	IncrementFailedLogin(ctx context.Context, userID primitive.ObjectID) error
 	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
+	GetUserByVerificationToken(ctx context.Context, token string) (*models.User, error)
+	VerifyUserEmail(ctx context.Context, userID primitive.ObjectID) error
 }
 
 type userService struct {
@@ -165,4 +167,30 @@ func (s *userService) GetUserByEmail(ctx context.Context, email string) (*models
 	s.cacheService.CacheUser(ctx, user, 30) // Shorter cache for email lookups
 
 	return user, nil
+}
+
+func (s *userService) GetUserByVerificationToken(ctx context.Context, token string) (*models.User, error) {
+	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Debug("Getting user by verification token")
+
+	user, err := s.userRepo.GetByVerificationToken(ctx, token)
+	if err != nil {
+		log.WithError(err).Error("Failed to get user by verification token")
+		return nil, err
+	}
+
+	log.WithField("user_id", user.ID.Hex()).WithField("email", user.Email).Debug("User found by verification token")
+	return user, nil
+}
+
+func (s *userService) VerifyUserEmail(ctx context.Context, userID primitive.ObjectID) error {
+	log.WithField("user_id", userID.Hex()).Info("Verifying user email")
+
+	err := s.userRepo.VerifyEmail(ctx, userID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to verify user email")
+		return err
+	}
+
+	log.WithField("user_id", userID.Hex()).Info("User email verified successfully")
+	return nil
 }

@@ -20,6 +20,7 @@ type Configuration struct {
 	Cache        CacheConfig       `mapstructure:"cache"`
 	Queue        QueueConfig       `mapstructure:"queue"`
 	RabbitMQ     RabbitMQConfig    `mapstructure:"rabbitmq"`
+	Frontend     FrontendConfig    `mapstructure:"frontend"`
 }
 
 type Database struct {
@@ -45,9 +46,10 @@ type ServerSettings struct {
 }
 
 type Application struct {
-	Name    string `mapstructure:"name"`
-	Timeout int    `mapstructure:"timeout"`
-	Version string `mapstructure:"version"`
+	Name     string `mapstructure:"name"`
+	Timeout  int    `mapstructure:"timeout"`
+	Version  string `mapstructure:"version"`
+	HostLink string `mapstructure:"host-link"`
 }
 
 type LogsSettings struct {
@@ -113,6 +115,11 @@ type RabbitMQConfig struct {
 	AutoAck        bool   `mapstructure:"auto-ack"`
 	NoLocal        bool   `mapstructure:"no-local"`
 	Consumer       string `mapstructure:"consumer"`
+}
+
+type FrontendConfig struct {
+	Url       string `mapstructure:"url"`
+	LoginPath string `mapstructure:"login-path"`
 }
 
 func Load() *Configuration {

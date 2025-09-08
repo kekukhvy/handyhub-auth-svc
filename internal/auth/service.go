@@ -8,9 +8,10 @@ import (
 	"handyhub-auth-svc/internal/models"
 	"handyhub-auth-svc/internal/session"
 	"handyhub-auth-svc/internal/user"
-
 	"handyhub-auth-svc/internal/utils"
 	"handyhub-auth-svc/internal/validators"
+	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,6 +20,7 @@ type Service interface {
 	// Authentication operations
 	Register(ctx context.Context, req *models.RegisterRequest) (*models.User, error)
 	Login(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error)
+	VerifyEmail(ctx context.Context, token string) error
 }
 
 var log = logrus.StandardLogger()
@@ -181,4 +183,55 @@ func (s *authService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 		User:                  user.ToProfile(),
 		SessionID:             session.SessionID,
 	}, nil
+}
+
+func (s *authService) VerifyEmail(ctx context.Context, token string) error {
+	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Info("Verifying email with token")
+
+	// Validate token format (basic sanitization)
+	if len(token) == 0 {
+		return models.ErrVerificationTokenInvalid
+	}
+
+	// Sanitize token
+	token = strings.TrimSpace(token)
+	if len(token) < 10 { // minimum reasonable token length
+		return models.ErrVerificationTokenInvalid
+	}
+
+	// Get user by verification token
+	user, err := s.userService.GetUserByVerificationToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, models.ErrUserNotFound) {
+			log.Warn("Verification token not found or invalid")
+			return models.ErrVerificationTokenInvalid
+		}
+		log.WithError(err).Error("Failed to get user by verification token")
+		return err
+	}
+
+	// Check if email is already verified
+	if user.IsEmailVerified {
+		log.WithField("email", user.Email).Warn("Email already verified")
+		return models.ErrEmailAlreadyVerified
+	}
+
+	// Check if token is expired
+	if user.VerificationExpires != nil && time.Now().After(*user.VerificationExpires) {
+		log.WithField("email", user.Email).Warn("Verification token expired")
+		return models.ErrVerificationTokenExpired
+	}
+
+	// Verify email
+	err = s.userService.VerifyUserEmail(ctx, user.ID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to verify user email")
+		return err
+	}
+
+	// Clear user cache after email verification
+	s.cacheService.CacheUser(ctx, user, s.cfg.Cache.ExpirationMinutes)
+
+	log.WithField("email", user.Email).Info("Email verified successfully")
+	return nil
 }

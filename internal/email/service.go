@@ -57,7 +57,7 @@ func NewEmailService(cfg *config.Configuration, rabbitMQ *clients.RabbitMQ) Serv
 func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationToken string) error {
 	log.WithField("email", userEmail).Debug("Queueing verification email")
 
-	subject, htmlBody, err := RenderVerificationEmail(firstName, verificationToken, s.config.EmailService.FrontendURL)
+	subject, htmlBody, err := RenderVerificationEmail(firstName, verificationToken, s.config.App.HostLink)
 	if err != nil {
 		return fmt.Errorf("failed to render email template: %w", err)
 	}

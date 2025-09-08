@@ -17,7 +17,7 @@ func RenderVerificationEmail(firstName, verificationToken, frontendUrl string) (
 	// Prepare data
 	data := VerificationEmailData{
 		FirstName:        firstName,
-		VerificationLink: fmt.Sprintf("%s/verify-email?token=%s", frontendUrl, verificationToken),
+		VerificationLink: fmt.Sprintf("%s/auth/verify-email?token=%s", frontendUrl, verificationToken),
 	}
 
 	subject = "Verify Your Email Address - HandyHub"

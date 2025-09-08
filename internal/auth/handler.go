@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
 	"handyhub-auth-svc/internal/session"
@@ -109,4 +110,45 @@ func (h *Handler) Login(c *gin.Context) {
 		Info("User logged in successfully")
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageLoginSuccess, loginResponse))
+}
+
+func (h *Handler) VerifyEmail(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	// Get token from query parameter
+	token := c.Query("token")
+	var endpoint = fmt.Sprintf("%s%s", h.cfg.Frontend.Url, h.cfg.Frontend.LoginPath)
+	if token == "" {
+		log.Error("Verification token not provided")
+		// Redirect to frontend with error
+		c.Redirect(http.StatusFound, "http://localhost:4200/login?error=missing_token&message=Verification+token+is+required")
+		return
+	}
+
+	// Verify email using verification token
+	err := h.authService.VerifyEmail(ctx, token)
+	if err != nil {
+		log.WithError(err).WithField("token", token[:min(10, len(token))]+"...").Error("Email verification failed")
+
+		var redirectURL string
+		switch {
+		case errors.Is(err, models.ErrVerificationTokenInvalid):
+			redirectURL = endpoint + "?error=invalid_token&message=Invalid+verification+token"
+		case errors.Is(err, models.ErrVerificationTokenExpired):
+			redirectURL = endpoint + "?error=token_expired&message=Verification+token+expired"
+		case errors.Is(err, models.ErrEmailAlreadyVerified):
+			redirectURL = endpoint + "?success=already_verified&message=Email+already+verified"
+		case errors.Is(err, models.ErrUserNotFound):
+			redirectURL = endpoint + "?error=user_not_found&message=User+not+found"
+		default:
+			redirectURL = endpoint + "?error=server_error&message=Internal+server+error"
+		}
+
+		c.Redirect(http.StatusFound, redirectURL)
+		return
+	}
+
+	log.Info("Email verified successfully")
+	c.Redirect(http.StatusFound, endpoint)
 }

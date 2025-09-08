@@ -87,8 +87,10 @@ func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
 	{
 		auth.POST("/register", deps.AuthHandler.Register)
 		auth.POST("/login", deps.AuthHandler.Login)
+		auth.GET("/verify-email", deps.AuthHandler.VerifyEmail)
 	}
 }
+
 func isMonoConnected(mongodb *clients.MongoDB, c *gin.Context) bool {
 	if err := mongodb.Client.Ping(c.Request.Context(), nil); err != nil {
 		return false
