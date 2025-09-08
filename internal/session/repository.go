@@ -20,6 +20,7 @@ type Repository interface {
 	Create(ctx context.Context, session *models.Session) (*models.Session, error)
 	GetByID(ctx context.Context, sessionID string) (*models.Session, error)
 	Update(ctx context.Context, session *models.Session) error
+	InvalidateUserSessions(ctx context.Context, userID primitive.ObjectID) error
 }
 
 func NewSessionRepository(db *clients.MongoDB, collectionName string) Repository {
@@ -74,6 +75,34 @@ func (r *repository) Update(ctx context.Context, session *models.Session) error 
 	if result.MatchedCount == 0 {
 		return models.ErrSessionNotFound
 	}
+
+	return nil
+}
+
+func (r *repository) InvalidateUserSessions(ctx context.Context, userID primitive.ObjectID) error {
+	now := time.Now()
+	filter := bson.M{
+		"user_id":   userID,
+		"is_active": true,
+		"logout_at": nil,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"is_active": false,
+			"logout_at": &now,
+		},
+	}
+
+	result, err := r.collection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to invalidate user sessions")
+		return models.ErrSessionUpdating
+	}
+
+	log.WithField("user_id", userID.Hex()).
+		WithField("sessions_invalidated", result.ModifiedCount).
+		Info("User sessions invalidated")
 
 	return nil
 }

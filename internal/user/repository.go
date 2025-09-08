@@ -24,6 +24,7 @@ type Repository interface {
 	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
 	GetByVerificationToken(ctx context.Context, token string) (*models.User, error)
 	VerifyEmail(ctx context.Context, userID primitive.ObjectID) error
+	UpdatePassword(ctx context.Context, userID primitive.ObjectID, hashedPassword string) error
 }
 
 type userRepository struct {
@@ -231,5 +232,32 @@ func (r *userRepository) VerifyEmail(ctx context.Context, userID primitive.Objec
 	}
 
 	log.WithField("user_id", userID.Hex()).Info("Email verified in database successfully")
+	return nil
+}
+
+func (r *userRepository) UpdatePassword(ctx context.Context, userID primitive.ObjectID, hashedPassword string) error {
+	filter := bson.M{
+		"_id":        userID,
+		"deleted_at": bson.M{"$exists": false},
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"password":   hashedPassword,
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to update password")
+		return models.ErrDatabaseUpdate
+	}
+
+	if result.MatchedCount == 0 {
+		return models.ErrUserNotFound
+	}
+
+	log.WithField("user_id", userID.Hex()).Info("Password updated successfully")
 	return nil
 }

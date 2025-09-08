@@ -186,3 +186,42 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	log.WithField("email", req.Email).Info("Password reset requested")
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordResetSent, nil))
 }
+
+// ResetPasswordConfirm handles password reset confirmation
+func (h *Handler) ResetPasswordConfirm(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	var req models.ResetPasswordConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.WithError(err).Error("Failed to bind reset password confirm request")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidRequest,
+			"Invalid request format",
+		))
+		return
+	}
+
+	// Reset password
+	err := h.authService.ResetPassword(ctx, &req)
+	if err != nil {
+		log.WithError(err).Error("Password reset failed")
+
+		switch err {
+		case models.ErrTokenExpired:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Reset token expired"))
+		case models.ErrInvalidToken:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Invalid reset token"))
+		case models.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(err, models.MessageUserNotFound))
+		case models.ErrInvalidRequest:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err, models.MessageInvalidRequest))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.Info("Password reset successfully")
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordResetSuccess, nil))
+}

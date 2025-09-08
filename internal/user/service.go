@@ -26,6 +26,7 @@ type Service interface {
 	GetUserByVerificationToken(ctx context.Context, token string) (*models.User, error)
 	VerifyUserEmail(ctx context.Context, userID primitive.ObjectID) error
 	SendPasswordResetEmail(user *models.User, resetToken string) error
+	UpdatePassword(ctx context.Context, userID, hashedPassword string) error
 }
 
 type userService struct {
@@ -205,4 +206,17 @@ func (s *userService) SendPasswordResetEmail(user *models.User, resetToken strin
 	}
 
 	return s.emailSvc.SendPasswordResetEmail(user.Email, user.FirstName, resetToken)
+}
+
+func (s *userService) UpdatePassword(ctx context.Context, userID, hashedPassword string) error {
+
+	// Get user
+	id, _ := primitive.ObjectIDFromHex(userID)
+
+	_, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return s.userRepo.UpdatePassword(ctx, id, hashedPassword)
 }

@@ -19,6 +19,7 @@ type Service interface {
 	IncrementRateLimit(ctx context.Context, key string, window int) error
 	ResetFailedLoginAttempts(ctx context.Context, key string) error
 	CacheActiveSession(ctx context.Context, session *models.Session) error
+	InvalidateUserSessions(ctx context.Context, userID string) error
 }
 
 var log = logrus.StandardLogger()
@@ -104,7 +105,7 @@ func (c *cacheService) ResetFailedLoginAttempts(ctx context.Context, key string)
 }
 
 func (c *cacheService) CacheActiveSession(ctx context.Context, session *models.Session) error {
-	key := fmt.Sprintf("session:%s", session.SessionID)
+	key := fmt.Sprintf("session:%s:%s", session.UserID.Hex(), session.SessionID)
 	activeSession := session.ToActiveSession()
 
 	data, err := json.Marshal(activeSession)
@@ -126,5 +127,35 @@ func (c *cacheService) CacheActiveSession(ctx context.Context, session *models.S
 	}
 
 	log.WithField("session_id", session.SessionID).Debug("Session cached successfully")
+	return nil
+}
+
+func (c *cacheService) InvalidateUserSessions(ctx context.Context, userID string) error {
+	log.WithField("user_id", userID).Debug("Invalidating all user sessions from cache")
+
+	pattern := fmt.Sprintf("session:%s:*", userID)
+
+	keys, err := c.client.Keys(ctx, pattern).Result()
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("Failed to get user session keys")
+		return models.ErrRedisGet
+	}
+
+	if len(keys) == 0 {
+		log.WithField("user_id", userID).Debug("No sessions found in cache for user")
+		return nil
+	}
+
+	deleted, err := c.client.Del(ctx, keys...).Result()
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("Failed to delete user sessions")
+		return models.ErrRedisDelete
+	}
+
+	log.WithFields(logrus.Fields{
+		"user_id": userID,
+		"deleted": deleted,
+	}).Info("User sessions invalidated from cache")
+
 	return nil
 }

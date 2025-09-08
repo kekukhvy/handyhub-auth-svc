@@ -22,6 +22,7 @@ type Service interface {
 	Login(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error)
 	VerifyEmail(ctx context.Context, token string) error
 	RequestPasswordReset(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, req *models.ResetPasswordConfirmRequest) error
 }
 
 var log = logrus.StandardLogger()
@@ -265,4 +266,53 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 		Info("Password reset token generated")
 
 	return s.userService.SendPasswordResetEmail(user, resetToken)
+}
+
+func (s *authService) ResetPassword(ctx context.Context, req *models.ResetPasswordConfirmRequest) error {
+	// Validate request
+	if validationErrors := s.validator.ValidateResetPasswordConfirmRequest(req); validationErrors.HasErrors() {
+		return models.ErrInvalidRequest
+	}
+
+	// Validate reset token
+	claims, err := s.jwtManager.ValidateResetToken(req.Token)
+	if err != nil {
+		log.WithError(err).Error("Invalid reset token")
+		return err
+	}
+
+	// Hash new password
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		log.WithError(err).Error("Failed to hash new password")
+		return models.ErrInternalServer
+	}
+
+	// Update password
+	err = s.userService.UpdatePassword(ctx, claims.UserID, hashedPassword)
+	if err != nil {
+		return err
+	}
+
+	// Invalidate all user sessions for security
+	s.InvalidateAllUserSessions(ctx, claims.UserID)
+
+	log.WithField("email", claims.Email).Info("Password reset successfully")
+
+	return nil
+}
+
+func (s *authService) InvalidateAllUserSessions(ctx context.Context, userID string) error {
+	err := s.sessionManager.InvalidateUserSessions(ctx, userID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("Failed to invalidate user sessions")
+		return err
+	}
+
+	err = s.cacheService.InvalidateUserSessions(ctx, userID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("Failed to invalidate user sessions in cache")
+		return err
+	}
+	return nil
 }

@@ -146,3 +146,11 @@ func (m *Manager) generateRefreshToken() (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
+
+func (m *Manager) InvalidateUserSessions(ctx context.Context, userID string) error {
+	id, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+	return m.repository.InvalidateUserSessions(ctx, id)
+}

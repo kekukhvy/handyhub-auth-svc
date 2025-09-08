@@ -88,7 +88,8 @@ func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
 		auth.POST("/register", deps.AuthHandler.Register)
 		auth.POST("/login", deps.AuthHandler.Login)
 		auth.GET("/verify-email", deps.AuthHandler.VerifyEmail)
-		auth.POST("/reset-password-request", deps.AuthHandler.ResetPassword)
+		auth.POST("/reset-password", deps.AuthHandler.ResetPassword)
+		auth.POST("/reset-password-confirm", deps.AuthHandler.ResetPasswordConfirm)
 	}
 }
 
