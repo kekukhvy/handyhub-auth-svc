@@ -21,6 +21,7 @@ type Service interface {
 	Register(ctx context.Context, req *models.RegisterRequest) (*models.User, error)
 	Login(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error)
 	VerifyEmail(ctx context.Context, token string) error
+	RequestPasswordReset(ctx context.Context, email string) error
 }
 
 var log = logrus.StandardLogger()
@@ -234,4 +235,34 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 
 	log.WithField("email", user.Email).Info("Email verified successfully")
 	return nil
+}
+
+func (s *authService) RequestPasswordReset(ctx context.Context, email string) error {
+	// Validate email format
+	if validationErrors := s.validator.ValidateResetPasswordRequest(&models.ResetPasswordRequest{Email: email}); validationErrors.HasErrors() {
+		return models.ErrInvalidEmail
+	}
+
+	// Get user by email
+	user, err := s.userService.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, models.ErrUserNotFound) {
+			// Don't reveal if email exists or not
+			log.WithField("email", email).Info("Password reset requested for non-existent email")
+			return nil
+		}
+		return err
+	}
+
+	resetToken, _, err := s.jwtManager.GenerateResetToken(user.ID, user.Email)
+	if err != nil {
+		log.WithError(err).Error("Failed to generate reset token")
+		return models.ErrTokenGenerating
+	}
+
+	log.WithField("email", user.Email).
+		WithField("reset_token", resetToken).
+		Info("Password reset token generated")
+
+	return s.userService.SendPasswordResetEmail(user, resetToken)
 }

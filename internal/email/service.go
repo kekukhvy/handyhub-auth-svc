@@ -15,6 +15,7 @@ var log = logrus.StandardLogger()
 
 type Service interface {
 	SendVerificationEmail(userEmail, firstName, verificationToken string) error
+	SendPasswordResetEmail(userEmail, firstName, resetToken string) error
 }
 
 type emailService struct {
@@ -103,6 +104,54 @@ func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationT
 	return nil
 }
 
+func (s *emailService) SendPasswordResetEmail(userEmail, firstName, resetToken string) error {
+	log.WithField("email", userEmail).Debug("Queueing password reset email")
+
+	subject, htmlBody, err := RenderPasswordResetEmail(firstName, resetToken, s.config.EmailService.FrontendURL)
+	if err != nil {
+		return fmt.Errorf("failed to render password reset email template: %w", err)
+	}
+
+	message := QueueMessage{
+		Email: Message{
+			To:       []string{userEmail},
+			Subject:  subject,
+			BodyHTML: htmlBody,
+		},
+		Priority: "high",
+		Metadata: map[string]string{
+			"type":        "password_reset",
+			"user_email":  userEmail,
+			"reset_token": resetToken,
+		},
+		Timestamp: time.Now(),
+	}
+
+	body, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	err = s.rabbitMQ.Channel.Publish(
+		s.config.Queue.RabbitMQ.Exchange,
+		s.config.Queue.RabbitMQ.RoutingKey,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+			Timestamp:   time.Now(),
+		},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to publish message: %w", err)
+	}
+
+	log.WithField("email", userEmail).Info("Password reset email queued successfully")
+	return nil
+}
+
 // Mock implementation
 type mockEmailService struct{}
 
@@ -114,6 +163,10 @@ func (m *mockEmailService) SendVerificationEmail(userEmail, firstName, verificat
 	return nil
 }
 
-func (m *mockEmailService) Close() error {
+func (m *mockEmailService) SendPasswordResetEmail(userEmail, firstName, resetToken string) error {
+	logrus.WithFields(logrus.Fields{
+		"email": userEmail,
+		"token": resetToken,
+	}).Info("Mock: Password reset email would be sent")
 	return nil
 }

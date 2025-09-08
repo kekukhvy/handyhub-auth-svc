@@ -25,6 +25,7 @@ type Service interface {
 	UpdateLastLogin(ctx context.Context, userID primitive.ObjectID) error
 	GetUserByVerificationToken(ctx context.Context, token string) (*models.User, error)
 	VerifyUserEmail(ctx context.Context, userID primitive.ObjectID) error
+	SendPasswordResetEmail(user *models.User, resetToken string) error
 }
 
 type userService struct {
@@ -193,4 +194,15 @@ func (s *userService) VerifyUserEmail(ctx context.Context, userID primitive.Obje
 
 	log.WithField("user_id", userID.Hex()).Info("User email verified successfully")
 	return nil
+}
+
+func (s *userService) SendPasswordResetEmail(user *models.User, resetToken string) error {
+	log.WithField("email", user.Email).Info("Sending password reset email")
+
+	if !user.IsActive() {
+		log.WithField("email", user.Email).Warn("Password reset requested for inactive user")
+		return models.ErrUserInactive
+	}
+
+	return s.emailSvc.SendPasswordResetEmail(user.Email, user.FirstName, resetToken)
 }

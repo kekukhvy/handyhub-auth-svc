@@ -152,3 +152,37 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 	log.Info("Email verified successfully")
 	c.Redirect(http.StatusFound, endpoint)
 }
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	var req models.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.WithError(err).Error("Failed to bind reset password request")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidRequest,
+			"Invalid request format",
+		))
+		return
+	}
+
+	// Request password reset
+	err := h.authService.RequestPasswordReset(ctx, req.Email)
+	if err != nil {
+		log.WithError(err).WithField("email", req.Email).Error("Password reset request failed")
+
+		switch err {
+		case models.ErrInvalidEmail:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err, "Invalid email address"))
+		case models.ErrUserInactive:
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(err, models.MessageUserInactive))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.WithField("email", req.Email).Info("Password reset requested")
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordResetSent, nil))
+}
