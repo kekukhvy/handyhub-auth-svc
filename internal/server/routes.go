@@ -101,6 +101,7 @@ func setupProtectedRoutes(router *gin.Engine, deps *dependency.Manager) {
 	protected.Use(deps.AuthMiddleware.RequireAuth())
 	{
 		protected.POST("/change-password", deps.AuthHandler.ChangePassword)
+		protected.POST("/logout", deps.AuthHandler.Logout)
 	}
 }
 

@@ -24,6 +24,7 @@ type Service interface {
 	GetActiveSession(ctx context.Context, key string) (*models.ActiveSession, error)
 	UpdateSessionActivity(ctx context.Context, key string) error
 	GetCachedUser(ctx context.Context, userID string) (*models.User, error)
+	RemoveCachedSession(ctx context.Context, sessionID, userId string) error
 }
 
 var log = logrus.StandardLogger()
@@ -258,4 +259,17 @@ func (c *cacheService) GetCachedUser(ctx context.Context, userID string) (*model
 	}
 
 	return user, nil
+}
+
+func (c *cacheService) RemoveCachedSession(ctx context.Context, sessionID, userId string) error {
+	key := fmt.Sprintf("session:%s:%s", userId, sessionID)
+
+	err := c.client.Del(ctx, key).Err()
+	if err != nil {
+		log.WithError(err).WithField("session_id", sessionID).Error("Failed to remove cached session")
+		return models.ErrRedisDelete
+	}
+
+	log.WithField("session_id", sessionID).Debug("Session removed from cache")
+	return nil
 }

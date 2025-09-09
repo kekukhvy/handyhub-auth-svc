@@ -12,7 +12,7 @@ import (
 )
 
 type CleanupJob struct {
-	manager           *Manager
+	manager           Manager
 	cacheService      cache.Service
 	filters           *Filters
 	interval          time.Duration
@@ -21,7 +21,7 @@ type CleanupJob struct {
 	stopChan          chan struct{}
 }
 
-func NewCleanupJob(manager *Manager, cache cache.Service, cfg *config.Configuration) *CleanupJob {
+func NewCleanupJob(manager Manager, cache cache.Service, cfg *config.Configuration) *CleanupJob {
 	// Default cleanup interval
 	interval := 10 * time.Minute
 	if cfg.Security.SessionCleanupInterval > 0 {

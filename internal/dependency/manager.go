@@ -26,10 +26,10 @@ type Manager struct {
 	UserRepository user.Repository
 	UserService    user.Service
 	AuthService    auth.Service
-	AuthHandler    *auth.Handler
+	AuthHandler    auth.Handler
 	TokenValidator *validators.TokenValidator
 	CacheService   cache.Service
-	SessionManager *session.Manager
+	SessionManager session.Manager
 	AuthMiddleware *middleware.AuthMiddleware
 }
 

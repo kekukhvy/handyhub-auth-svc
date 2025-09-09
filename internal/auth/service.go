@@ -27,6 +27,7 @@ type Service interface {
 	VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error)
 	ChangePassword(ctx context.Context, userID primitive.ObjectID, req *models.ChangePasswordRequest) error
+	Logout(ctx context.Context, sessionID string) error
 }
 
 var log = logrus.StandardLogger()
@@ -34,14 +35,14 @@ var log = logrus.StandardLogger()
 type authService struct {
 	validator      *validators.RequestValidator
 	userService    user.Service
-	sessionManager *session.Manager
+	sessionManager session.Manager
 	cfg            *config.Configuration
 	jwtManager     *utils.JWTManager
 	cacheService   cache.Service
 }
 
 func NewAuthService(validator *validators.RequestValidator, userService user.Service,
-	cfg *config.Configuration, sessionManager *session.Manager, cacheService cache.Service,
+	cfg *config.Configuration, sessionManager session.Manager, cacheService cache.Service,
 	jwtManager *utils.JWTManager) Service {
 	return &authService{
 		validator:      validator,
@@ -461,6 +462,29 @@ func (s *authService) ChangePassword(ctx context.Context, userID primitive.Objec
 	}
 
 	log.WithField("email", user.Email).Info("Password changed successfully")
+
+	return nil
+}
+
+func (s *authService) Logout(ctx context.Context, sessionID string) error {
+	// Get session
+	session, err := s.sessionManager.GetByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, models.ErrSessionNotFound) {
+			// Session might already be invalidated, not an error
+			log.WithField("session_id", sessionID).Warn("Session not found during logout")
+			return nil
+		}
+		return err
+	}
+
+	s.sessionManager.InvalidateSession(ctx, session)
+
+	s.cacheService.RemoveCachedSession(ctx, sessionID, session.UserID.Hex())
+
+	log.WithField("session_id", sessionID).
+		WithField("user_id", session.UserID.Hex()).
+		Info("User logged out successfully")
 
 	return nil
 }

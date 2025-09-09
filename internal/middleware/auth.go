@@ -16,13 +16,13 @@ var log = logrus.StandardLogger()
 
 type AuthMiddleware struct {
 	jwtManager     *utils.JWTManager
-	sessionService *session.Manager
+	sessionService session.Manager
 	userService    user.Service
 }
 
 func NewAuthMiddleware(
 	jwtManager *utils.JWTManager,
-	sessionService *session.Manager,
+	sessionService session.Manager,
 	userService user.Service) *AuthMiddleware {
 	return &AuthMiddleware{
 		jwtManager:     jwtManager,

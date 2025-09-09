@@ -32,11 +32,11 @@ logs:
 security:
   jwt-key: "your-secret-jwt-key"
   access-token-expiration: 60  # minutes
-  refresh-token-expiration: 20160  # minutes (14 days)
+  refresh-token-expiration: 10080  # minutes (14 days)
   password-salt-rounds: 12
   login-rate-limit: 5
-  session-inactivity-timeout: 5
-  session-cleanup-interval: 1
+  session-inactivity-timeout: 30
+  session-cleanup-interval: 30
   session-cleanup-batch-size: 100
   password-validation:
     min-length: 6
@@ -58,7 +58,7 @@ email-service:
 
 cache:
   expiration-minutes: 60
-  session-expiration-minutes: 5
+  session-expiration-minutes: 30
   extended-expiration-minutes: 30
 
 queue:

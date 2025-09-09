@@ -15,21 +15,33 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type Handler struct {
+type handler struct {
 	cfg            *config.Configuration
 	authService    Service
 	tokenValidator *validators.TokenValidator
 }
 
-func NewAuthHandler(cfg *config.Configuration, service Service, tokenValidator *validators.TokenValidator) *Handler {
-	return &Handler{
+type Handler interface {
+	Register(c *gin.Context)
+	Login(c *gin.Context)
+	VerifyEmail(c *gin.Context)
+	ResetPassword(c *gin.Context)
+	ResetPasswordConfirm(c *gin.Context)
+	VerifyToken(c *gin.Context)
+	RefreshToken(c *gin.Context)
+	ChangePassword(c *gin.Context)
+	Logout(c *gin.Context)
+}
+
+func NewAuthHandler(cfg *config.Configuration, service Service, tokenValidator *validators.TokenValidator) Handler {
+	return &handler{
 		cfg:            cfg,
 		authService:    service,
 		tokenValidator: tokenValidator,
 	}
 }
 
-func (h *Handler) Register(c *gin.Context) {
+func (h *handler) Register(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -67,7 +79,7 @@ func (h *Handler) Register(c *gin.Context) {
 }
 
 // Login handles user authentication
-func (h *Handler) Login(c *gin.Context) {
+func (h *handler) Login(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -116,7 +128,7 @@ func (h *Handler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageLoginSuccess, loginResponse))
 }
 
-func (h *Handler) VerifyEmail(c *gin.Context) {
+func (h *handler) VerifyEmail(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -157,7 +169,7 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 	c.Redirect(http.StatusFound, endpoint)
 }
 
-func (h *Handler) ResetPassword(c *gin.Context) {
+func (h *handler) ResetPassword(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -192,7 +204,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 }
 
 // ResetPasswordConfirm handles password reset confirmation
-func (h *Handler) ResetPasswordConfirm(c *gin.Context) {
+func (h *handler) ResetPasswordConfirm(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -230,7 +242,7 @@ func (h *Handler) ResetPasswordConfirm(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordResetSuccess, nil))
 }
 
-func (h *Handler) VerifyToken(c *gin.Context) {
+func (h *handler) VerifyToken(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -285,7 +297,7 @@ func (h *Handler) VerifyToken(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse("Token is valid", response))
 }
 
-func (h *Handler) RefreshToken(c *gin.Context) {
+func (h *handler) RefreshToken(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -322,7 +334,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageTokenRefreshed, refreshResponse))
 }
 
-func (h *Handler) ChangePassword(c *gin.Context) {
+func (h *handler) ChangePassword(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
 	defer cancel()
 
@@ -386,4 +398,41 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 
 	log.WithField("user_id", userID.Hex()).Info("Password changed successfully")
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordChangeSuccess, nil))
+}
+
+func (h *handler) Logout(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	// Get session ID from middleware
+	sessionID, exists := c.Get("session_id")
+	if !exists {
+		log.Error("Session ID not found in context")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrSessionNotFound,
+			"Session not found",
+		))
+		return
+	}
+
+	sessionIDStr, ok := sessionID.(string)
+	if !ok {
+		log.Error("Invalid session ID format")
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(
+			models.ErrSessionInvalid,
+			"Invalid session format",
+		))
+		return
+	}
+
+	// Logout user
+	err := h.authService.Logout(ctx, sessionIDStr)
+	if err != nil {
+		log.WithError(err).WithField("session_id", sessionIDStr).Error("Logout failed")
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		return
+	}
+
+	log.WithField("session_id", sessionIDStr).Info("User logged out successfully")
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageLogoutSuccess, nil))
 }
