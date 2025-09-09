@@ -26,6 +26,7 @@ type Service interface {
 	ResetPassword(ctx context.Context, req *models.ResetPasswordConfirmRequest) error
 	VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error)
+	ChangePassword(ctx context.Context, userID primitive.ObjectID, req *models.ChangePasswordRequest) error
 }
 
 var log = logrus.StandardLogger()
@@ -40,14 +41,15 @@ type authService struct {
 }
 
 func NewAuthService(validator *validators.RequestValidator, userService user.Service,
-	cfg *config.Configuration, sessionManager *session.Manager, cacheService cache.Service) Service {
+	cfg *config.Configuration, sessionManager *session.Manager, cacheService cache.Service,
+	jwtManager *utils.JWTManager) Service {
 	return &authService{
 		validator:      validator,
 		userService:    userService,
 		cfg:            cfg,
 		sessionManager: sessionManager,
 		cacheService:   cacheService,
-		jwtManager:     utils.NewJWTManager(cfg.Security.JwtKey, cfg.Security.AccessTokenExpiration, cfg.Security.RefreshTokenExpiration),
+		jwtManager:     jwtManager,
 	}
 }
 
@@ -163,7 +165,7 @@ func (s *authService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	// Update session with refresh token
 	session.RefreshToken = refreshToken
 	session.AccessToken = accessToken
-	session.ExpiresAt = accessExpiresAt
+	session.ExpiresAt = refreshExpiresAt
 
 	s.sessionManager.Update(ctx, session)
 
@@ -381,12 +383,6 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, models.ErrSessionNotFound
 	}
 
-	// Validate session
-	if !session.IsValidSession() {
-		log.WithField("session_id", session.SessionID).Warn("Invalid session for token refresh")
-		return nil, models.ErrSessionExpired
-	}
-
 	// Get user to ensure they're still active
 	userID, _ := primitive.ObjectIDFromHex(claims.UserID)
 	user, err := s.userService.GetUserByID(ctx, userID)
@@ -417,4 +413,40 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		AccessToken:          accessToken,
 		AccessTokenExpiresAt: accessExpiresAt,
 	}, nil
+}
+
+func (s *authService) ChangePassword(ctx context.Context, userID primitive.ObjectID, req *models.ChangePasswordRequest) error {
+	// Validate request
+	if validationErrors := s.validator.ValidateChangePasswordRequest(req); validationErrors.HasErrors() {
+		return models.ErrInvalidRequest
+	}
+
+	// Get user
+	user, err := s.userService.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Verify current password
+	if !utils.ComparePasswords(user.Password, req.CurrentPassword) {
+		log.WithField("user_id", userID.Hex()).Warn("Invalid current password for password change")
+		return models.ErrPasswordMismatch
+	}
+
+	// Hash new password
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		log.WithError(err).Error("Failed to hash new password")
+		return models.ErrInternalServer
+	}
+
+	// Update password
+	err = s.userService.UpdatePassword(ctx, userID.Hex(), hashedPassword)
+	if err != nil {
+		return err
+	}
+
+	log.WithField("email", user.Email).Info("Password changed successfully")
+
+	return nil
 }

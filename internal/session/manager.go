@@ -73,6 +73,10 @@ func (m *Manager) ValidateSession(session *models.Session) *models.SessionStatus
 	return session.ToSessionStatus()
 }
 
+func (m *Manager) GetByID(ctx context.Context, sessionID string) (*models.Session, error) {
+	return m.repository.GetByID(ctx, sessionID)
+}
+
 // IsSessionValid checks if session is valid for authentication
 func (m *Manager) IsSessionValid(session *models.Session) bool {
 	if session == nil {

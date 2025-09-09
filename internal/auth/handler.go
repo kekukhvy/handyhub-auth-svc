@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Handler struct {
@@ -319,4 +320,70 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	log.Info("Token refreshed successfully")
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageTokenRefreshed, refreshResponse))
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	// Get user ID from middleware
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		log.Error("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrUnauthorized,
+			"User not authenticated",
+		))
+		return
+	}
+
+	userIDStr, ok := userIDInterface.(string)
+	if !ok {
+		log.Error("Invalid user ID format")
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(
+			models.ErrInternalServer,
+			"Invalid user ID format",
+		))
+		return
+	}
+
+	userID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		log.WithError(err).Error("Failed to parse user ID")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidUserID,
+			"Invalid user ID",
+		))
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.WithError(err).Error("Failed to bind change password request")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidRequest,
+			"Invalid request format",
+		))
+		return
+	}
+
+	err = h.authService.ChangePassword(ctx, userID, &req)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Password change failed")
+
+		switch err {
+		case models.ErrPasswordMismatch:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err, "Current password is incorrect"))
+		case models.ErrInvalidRequest:
+			c.JSON(http.StatusBadRequest, models.NewErrorResponse(err, models.MessageInvalidRequest))
+		case models.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, models.NewErrorResponse(err, models.MessageUserNotFound))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.WithField("user_id", userID.Hex()).Info("Password changed successfully")
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordChangeSuccess, nil))
 }

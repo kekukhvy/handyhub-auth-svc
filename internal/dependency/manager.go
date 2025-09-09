@@ -8,6 +8,7 @@ import (
 	"handyhub-auth-svc/internal/email"
 	"handyhub-auth-svc/internal/session"
 	"handyhub-auth-svc/internal/user"
+	"handyhub-auth-svc/internal/utils"
 	"handyhub-auth-svc/internal/validators"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,7 @@ type Manager struct {
 	TokenValidator *validators.TokenValidator
 	CacheService   cache.Service
 	SessionManager *session.Manager
+	AuthMiddleware *auth.AuthMiddleware
 }
 
 func NewDependencyManager(router *gin.Engine,
@@ -36,14 +38,17 @@ func NewDependencyManager(router *gin.Engine,
 	rabbitMQ *clients.RabbitMQ,
 	cfg *config.Configuration) *Manager {
 	tokenValidator := validators.NewTokenValidator()
+	jwtManager := utils.NewJWTManager(cfg.Security.JwtKey, cfg.Security.AccessTokenExpiration, cfg.Security.RefreshTokenExpiration)
 	requestValidator := validators.NewRequestValidator(cfg)
 	emailService := email.NewEmailService(cfg, rabbitMQ)
 	cacheService := cache.NewCacheService(redisClient, cfg)
 	sessionManager := session.NewManager(mongodb, cfg, cacheService)
 	userRepository := user.NewUserRepository(mongodb, cfg.Database.UserCollection)
 	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
-	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService)
+	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService, jwtManager)
 	authHandler := auth.NewAuthHandler(cfg, authService, tokenValidator)
+	authMiddleware := auth.NewAuthMiddleware(jwtManager, sessionManager, userService)
+
 	return &Manager{
 		Router:         router,
 		Config:         cfg,
@@ -57,5 +62,6 @@ func NewDependencyManager(router *gin.Engine,
 		AuthHandler:    authHandler,
 		CacheService:   cacheService,
 		SessionManager: sessionManager,
+		AuthMiddleware: authMiddleware,
 	}
 }
