@@ -152,6 +152,7 @@ func (r *repository) GetActiveSessions(ctx context.Context, limit int) ([]*model
 }
 
 func (r *repository) GetByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
+	log.WithField("refresh_token", refreshToken).Debug("Getting session by refresh token")
 	var session models.Session
 	filter := bson.M{
 		"refresh_token": refreshToken,
@@ -165,10 +166,11 @@ func (r *repository) GetByRefreshToken(ctx context.Context, refreshToken string)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, models.ErrSessionNotFound
 		}
-		log.WithError(err).Error("Failed to get session by refresh token")
+		log.WithError(err).Error("Failed to get session by refresh token %s", refreshToken)
 		return nil, models.ErrDatabaseQuery
 	}
 
+	log.WithField("session_id", session.SessionID).Debug("Session retrieved by refresh token")
 	return &session, nil
 }
 

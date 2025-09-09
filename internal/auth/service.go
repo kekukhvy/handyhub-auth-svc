@@ -353,6 +353,8 @@ func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRe
 		return nil, models.ErrSessionExpired
 	}
 
+	s.sessionManager.UpdateSessionActivity(ctx, claims.SessionID)
+
 	// Return successful response
 	return &models.VerifyTokenResponse{
 		Valid:     true,
@@ -376,18 +378,25 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, err
 	}
 
-	// Get session by refresh token
-	session, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
-	if err != nil {
-		log.WithError(err).Error("Session not found for refresh token")
-		return nil, models.ErrSessionNotFound
-	}
-
 	// Get user to ensure they're still active
 	userID, _ := primitive.ObjectIDFromHex(claims.UserID)
 	user, err := s.userService.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Get session by refresh token
+	currentSession, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		log.WithError(err).Error("Failed to find session by refresh token")
+	}
+
+	if currentSession == nil {
+		currentSession, err = s.sessionManager.CreateSession(ctx, userID, "", "")
+		if err != nil {
+			log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to create new session during refresh")
+			return nil, models.ErrSessionCreating
+		}
 	}
 
 	if !user.IsActive() {
@@ -396,17 +405,22 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	}
 
 	// Generate new access token
-	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, session.SessionID, user.Email, user.Role)
+	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, currentSession.SessionID, user.Email, user.Role)
 	if err != nil {
 		log.WithError(err).Error("Failed to generate new access token")
 		return nil, models.ErrTokenGenerating
 	}
 
+	currentSession.AccessToken = accessToken
+	currentSession.RefreshToken = refreshToken
+	currentSession.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.RefreshTokenExpiration))
+
 	// Update session activity
-	s.sessionManager.UpdateSessionActivity(ctx, session.SessionID)
+	s.sessionManager.UpdateSessionActivity(ctx, currentSession.SessionID)
+	s.cacheService.CacheActiveSession(ctx, currentSession)
 
 	log.WithField("user_id", user.ID.Hex()).
-		WithField("session_id", session.SessionID).
+		WithField("session_id", currentSession.SessionID).
 		Info("Token refreshed successfully")
 
 	return &models.RefreshTokenResponse{

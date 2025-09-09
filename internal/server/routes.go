@@ -92,6 +92,7 @@ func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
 		auth.POST("/reset-password-confirm", deps.AuthHandler.ResetPasswordConfirm)
 		auth.GET("/verify-email", deps.AuthHandler.VerifyEmail)
 		auth.GET("/verify-token", deps.AuthHandler.VerifyToken)
+		auth.POST("/refresh", deps.AuthHandler.RefreshToken)
 	}
 }
 
@@ -99,7 +100,6 @@ func setupProtectedRoutes(router *gin.Engine, deps *dependency.Manager) {
 	protected := router.Group("/auth")
 	protected.Use(deps.AuthMiddleware.RequireAuth())
 	{
-		protected.POST("/refresh", deps.AuthHandler.RefreshToken)
 		protected.POST("/change-password", deps.AuthHandler.ChangePassword)
 	}
 }

@@ -90,10 +90,10 @@ type EmailService struct {
 	FrontendURL string `mapstructure:"frontend-url"`
 	DefaultFrom string `mapstructure:"default-from"`
 }
-
 type CacheConfig struct {
 	ExpirationMinutes         int `mapstructure:"expiration-minutes"`
 	ExtendedExpirationMinutes int `mapstructure:"extended-expiration-minutes"`
+	SessionExpirationMinutes  int `mapstructure:"session-expiration-minutes"`
 }
 
 type QueueConfig struct {

@@ -1,4 +1,4 @@
-package auth
+package middleware
 
 import (
 	"handyhub-auth-svc/internal/models"
@@ -9,7 +9,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
+
+var log = logrus.StandardLogger()
 
 type AuthMiddleware struct {
 	jwtManager     *utils.JWTManager

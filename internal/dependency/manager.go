@@ -6,6 +6,7 @@ import (
 	"handyhub-auth-svc/internal/cache"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/email"
+	"handyhub-auth-svc/internal/middleware"
 	"handyhub-auth-svc/internal/session"
 	"handyhub-auth-svc/internal/user"
 	"handyhub-auth-svc/internal/utils"
@@ -29,7 +30,7 @@ type Manager struct {
 	TokenValidator *validators.TokenValidator
 	CacheService   cache.Service
 	SessionManager *session.Manager
-	AuthMiddleware *auth.AuthMiddleware
+	AuthMiddleware *middleware.AuthMiddleware
 }
 
 func NewDependencyManager(router *gin.Engine,
@@ -47,7 +48,7 @@ func NewDependencyManager(router *gin.Engine,
 	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
 	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService, jwtManager)
 	authHandler := auth.NewAuthHandler(cfg, authService, tokenValidator)
-	authMiddleware := auth.NewAuthMiddleware(jwtManager, sessionManager, userService)
+	authMiddleware := middleware.NewAuthMiddleware(jwtManager, sessionManager, userService)
 
 	return &Manager{
 		Router:         router,

@@ -121,7 +121,7 @@ func (c *cacheService) CacheActiveSession(ctx context.Context, session *models.S
 		return models.ErrRedisSet
 	}
 
-	expiration := time.Until(session.ExpiresAt)
+	expiration := time.Until(session.LastActiveAt.Add(time.Minute * time.Duration(c.cfg.SessionExpirationMinutes)))
 	if expiration <= 0 {
 		log.WithField("session_id", session.SessionID).Warn("Session already expired, not caching")
 		return nil
@@ -209,7 +209,7 @@ func (c *cacheService) UpdateSessionActivity(ctx context.Context, key string) er
 		return models.ErrRedisSet
 	}
 
-	extendedTTL := time.Duration(c.cfg.ExtendedExpirationMinutes) * time.Minute
+	extendedTTL := time.Duration(c.cfg.SessionExpirationMinutes) * time.Minute
 	err = c.client.Set(ctx, key, data, extendedTTL).Err()
 	if err != nil {
 		log.WithError(err).WithField("key", key).Error("Failed to update session activity")
