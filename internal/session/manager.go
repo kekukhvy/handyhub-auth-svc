@@ -225,3 +225,23 @@ func (m *Manager) ValidateSessionWithCache(ctx context.Context, sessionID string
 func (m *Manager) GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error) {
 	return m.repository.GetActiveSessions(ctx, limit)
 }
+
+func (s *Manager) GetSessionByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
+	return s.repository.GetByRefreshToken(ctx, refreshToken)
+}
+
+func (s *Manager) UpdateSessionActivity(ctx context.Context, sessionID string) error {
+	// Update in database
+	if err := s.repository.UpdateActivity(ctx, sessionID); err != nil {
+		log.WithError(err).WithField("session_id", sessionID).Error("Failed to update session activity in database")
+		return err
+	}
+
+	// Update in cache
+	if err := s.cacheService.UpdateSessionActivity(ctx, sessionID); err != nil {
+		log.WithError(err).WithField("session_id", sessionID).Warn("Failed to update cached session activity")
+		// Not critical, continue
+	}
+
+	return nil
+}

@@ -27,6 +27,7 @@ type Service interface {
 	VerifyUserEmail(ctx context.Context, userID primitive.ObjectID) error
 	SendPasswordResetEmail(user *models.User, resetToken string) error
 	UpdatePassword(ctx context.Context, userID, hashedPassword string) error
+	GetUserByID(ctx context.Context, userID primitive.ObjectID) (*models.User, error)
 }
 
 type userService struct {
@@ -222,4 +223,25 @@ func (s *userService) UpdatePassword(ctx context.Context, userID, hashedPassword
 	}
 
 	return s.userRepo.UpdatePassword(ctx, id, hashedPassword)
+}
+
+func (s *userService) GetUserByID(ctx context.Context, userID primitive.ObjectID) (*models.User, error) {
+	// Try cache first
+	cachedUser, err := s.cacheService.GetCachedUser(ctx, userID.Hex())
+	if err == nil && cachedUser != nil {
+		log.WithField("user_id", userID.Hex()).Debug("User retrieved from cache")
+		return cachedUser, nil
+	}
+
+	// Get from repository
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to get user by ID")
+		return nil, err
+	}
+
+	// Cache user profile
+	s.cacheService.CacheUser(ctx, user, 60)
+
+	return user, nil
 }

@@ -23,6 +23,7 @@ type Service interface {
 	InvalidateUserSessions(ctx context.Context, userID string) error
 	GetActiveSession(ctx context.Context, key string) (*models.ActiveSession, error)
 	UpdateSessionActivity(ctx context.Context, key string) error
+	GetCachedUser(ctx context.Context, userID string) (*models.User, error)
 }
 
 var log = logrus.StandardLogger()
@@ -217,4 +218,44 @@ func (c *cacheService) UpdateSessionActivity(ctx context.Context, key string) er
 
 	log.WithField("key", key).Debug("Session activity updated successfully")
 	return nil
+}
+func (c *cacheService) GetCachedUser(ctx context.Context, userID string) (*models.User, error) {
+	key := fmt.Sprintf("user:%s", userID)
+
+	data, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, models.ErrUserNotFound
+		}
+		log.WithError(err).WithField("user_id", userID).Error("Failed to get cached user")
+		return nil, models.ErrRedisGet
+	}
+
+	var userProfile models.UserProfile
+	err = json.Unmarshal([]byte(data), &userProfile)
+	if err != nil {
+		log.WithError(err).WithField("user_id", userID).Error("Failed to unmarshal cached user")
+		return nil, models.ErrRedisGet
+	}
+
+	// Convert back to User (note: password will be empty)
+	user := &models.User{
+		ID:               userProfile.ID,
+		FirstName:        userProfile.FirstName,
+		LastName:         userProfile.LastName,
+		Email:            userProfile.Email,
+		Phone:            userProfile.Phone,
+		Role:             userProfile.Role,
+		Status:           userProfile.Status,
+		IsEmailVerified:  userProfile.IsEmailVerified,
+		RegistrationDate: userProfile.RegistrationDate,
+		LastLoginAt:      userProfile.LastLoginAt,
+		Avatar:           userProfile.Avatar,
+		TimeZone:         userProfile.TimeZone,
+		Language:         userProfile.Language,
+		CreatedAt:        userProfile.CreatedAt,
+		UpdatedAt:        userProfile.UpdatedAt,
+	}
+
+	return user, nil
 }

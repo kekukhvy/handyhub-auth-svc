@@ -23,6 +23,8 @@ type Repository interface {
 	Update(ctx context.Context, session *models.Session) error
 	InvalidateUserSessions(ctx context.Context, userID primitive.ObjectID) error
 	GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error)
+	GetByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error)
+	UpdateActivity(ctx context.Context, sessionID string) error
 }
 
 func NewSessionRepository(db *clients.MongoDB, collectionName string) Repository {
@@ -147,4 +149,46 @@ func (r *repository) GetActiveSessions(ctx context.Context, limit int) ([]*model
 
 	log.WithField("count", len(sessions)).Debug("Retrieved active sessions for cleanup")
 	return sessions, nil
+}
+
+func (r *repository) GetByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
+	var session models.Session
+	filter := bson.M{
+		"refresh_token": refreshToken,
+		"is_active":     true,
+		"expires_at":    bson.M{"$gt": time.Now()},
+		"logout_at":     nil,
+	}
+
+	err := r.collection.FindOne(ctx, filter).Decode(&session)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, models.ErrSessionNotFound
+		}
+		log.WithError(err).Error("Failed to get session by refresh token")
+		return nil, models.ErrDatabaseQuery
+	}
+
+	return &session, nil
+}
+
+func (r *repository) UpdateActivity(ctx context.Context, sessionID string) error {
+	filter := bson.M{
+		"session_id": sessionID,
+		"is_active":  true,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"last_active_at": time.Now(),
+		},
+	}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.WithError(err).WithField("session_id", sessionID).Error("Failed to update session activity")
+		return models.ErrSessionUpdating
+	}
+
+	return nil
 }

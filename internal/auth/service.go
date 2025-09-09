@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Service interface {
@@ -24,6 +25,7 @@ type Service interface {
 	RequestPasswordReset(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, req *models.ResetPasswordConfirmRequest) error
 	VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error)
 }
 
 var log = logrus.StandardLogger()
@@ -356,5 +358,63 @@ func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRe
 		SessionID: claims.SessionID,
 		ExpiresAt: claims.ExpiresAt.Time,
 		IssuedAt:  claims.IssuedAt.Time,
+	}, nil
+}
+
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error) {
+	// Validate refresh token format
+	if validationErrors := s.validator.ValidateRefreshTokenRequest(&models.RefreshTokenRequest{RefreshToken: refreshToken}); validationErrors.HasErrors() {
+		return nil, models.ErrInvalidToken
+	}
+
+	// Validate refresh token
+	claims, err := s.jwtManager.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		log.WithError(err).Error("Invalid refresh token")
+		return nil, err
+	}
+
+	// Get session by refresh token
+	session, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		log.WithError(err).Error("Session not found for refresh token")
+		return nil, models.ErrSessionNotFound
+	}
+
+	// Validate session
+	if !session.IsValidSession() {
+		log.WithField("session_id", session.SessionID).Warn("Invalid session for token refresh")
+		return nil, models.ErrSessionExpired
+	}
+
+	// Get user to ensure they're still active
+	userID, _ := primitive.ObjectIDFromHex(claims.UserID)
+	user, err := s.userService.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !user.IsActive() {
+		log.WithField("user_id", user.ID.Hex()).Warn("Inactive user token refresh attempt")
+		return nil, models.ErrUserInactive
+	}
+
+	// Generate new access token
+	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, session.SessionID, user.Email, user.Role)
+	if err != nil {
+		log.WithError(err).Error("Failed to generate new access token")
+		return nil, models.ErrTokenGenerating
+	}
+
+	// Update session activity
+	s.sessionManager.UpdateSessionActivity(ctx, session.SessionID)
+
+	log.WithField("user_id", user.ID.Hex()).
+		WithField("session_id", session.SessionID).
+		Info("Token refreshed successfully")
+
+	return &models.RefreshTokenResponse{
+		AccessToken:          accessToken,
+		AccessTokenExpiresAt: accessExpiresAt,
 	}, nil
 }

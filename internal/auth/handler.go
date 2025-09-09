@@ -283,3 +283,40 @@ func (h *Handler) VerifyToken(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.NewSuccessResponse("Token is valid", response))
 }
+
+func (h *Handler) RefreshToken(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	var req models.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.WithError(err).Error("Failed to bind refresh token request")
+		c.JSON(http.StatusBadRequest, models.NewErrorResponse(
+			models.ErrInvalidRequest,
+			"Invalid request format",
+		))
+		return
+	}
+
+	refreshResponse, err := h.authService.RefreshToken(ctx, req.RefreshToken)
+	if err != nil {
+		log.WithError(err).Error("Token refresh failed")
+
+		switch err {
+		case models.ErrTokenExpired:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, models.MessageTokenExpired))
+		case models.ErrInvalidToken:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, models.MessageTokenInvalid))
+		case models.ErrSessionNotFound, models.ErrSessionExpired:
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, models.MessageSessionExpired))
+		case models.ErrUserInactive:
+			c.JSON(http.StatusForbidden, models.NewErrorResponse(err, models.MessageUserInactive))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.Info("Token refreshed successfully")
+	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessageTokenRefreshed, refreshResponse))
+}
