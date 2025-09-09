@@ -23,6 +23,7 @@ type Service interface {
 	VerifyEmail(ctx context.Context, token string) error
 	RequestPasswordReset(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, req *models.ResetPasswordConfirmRequest) error
+	VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error)
 }
 
 var log = logrus.StandardLogger()
@@ -30,20 +31,20 @@ var log = logrus.StandardLogger()
 type authService struct {
 	validator      *validators.RequestValidator
 	userService    user.Service
-	cacheService   cache.Service
 	sessionManager *session.Manager
 	cfg            *config.Configuration
 	jwtManager     *utils.JWTManager
+	cacheService   cache.Service
 }
 
 func NewAuthService(validator *validators.RequestValidator, userService user.Service,
-	cacheService cache.Service, cfg *config.Configuration, sessionManager *session.Manager) Service {
+	cfg *config.Configuration, sessionManager *session.Manager, cacheService cache.Service) Service {
 	return &authService{
 		validator:      validator,
 		userService:    userService,
-		cacheService:   cacheService,
 		cfg:            cfg,
 		sessionManager: sessionManager,
+		cacheService:   cacheService,
 		jwtManager:     utils.NewJWTManager(cfg.Security.JwtKey, cfg.Security.AccessTokenExpiration, cfg.Security.RefreshTokenExpiration),
 	}
 }
@@ -85,9 +86,6 @@ func (s *authService) Register(ctx context.Context, req *models.RegisterRequest)
 	if err != nil {
 		return nil, err
 	}
-
-	// Cache user profile
-	s.cacheService.CacheUser(ctx, user, s.cfg.Cache.ExpirationMinutes)
 
 	s.userService.SendVerificationEmail(ctx, createdUser.ID)
 
@@ -315,4 +313,48 @@ func (s *authService) InvalidateAllUserSessions(ctx context.Context, userID stri
 		return err
 	}
 	return nil
+}
+
+func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error) {
+	log.WithField("token_prefix", req.Token[:min(10, len(req.Token))]+"...").Debug("Verifying token")
+
+	// Validate request
+	if validationErrors := s.validator.ValidateVerifyTokenRequest(req); validationErrors.HasErrors() {
+		return nil, models.ErrInvalidRequest
+	}
+
+	// Parse and validate JWT token structure
+	claims, err := s.jwtManager.ValidateAccessToken(req.Token)
+	if err != nil {
+		log.WithError(err).Debug("JWT validation failed")
+		return nil, err
+	}
+
+	// Convert string userID to ObjectID
+	userID, err := utils.GetUserIDFromClaims(claims)
+	if err != nil {
+		log.WithError(err).Error("Invalid user ID in token")
+		return nil, models.ErrInvalidToken
+	}
+
+	// Validate session using Redis-first strategy
+	isValid, err := s.sessionManager.ValidateSessionWithCache(ctx, claims.SessionID, userID)
+	if err != nil {
+		log.WithError(err).WithField("session_id", claims.SessionID).Error("Session validation failed")
+		return nil, err
+	}
+
+	if !isValid {
+		log.WithField("session_id", claims.SessionID).Warn("Session is invalid or expired")
+		return nil, models.ErrSessionExpired
+	}
+
+	// Return successful response
+	return &models.VerifyTokenResponse{
+		Valid:     true,
+		UserID:    userID,
+		SessionID: claims.SessionID,
+		ExpiresAt: claims.ExpiresAt.Time,
+		IssuedAt:  claims.IssuedAt.Time,
+	}, nil
 }

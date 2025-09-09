@@ -25,21 +25,25 @@ type Manager struct {
 	UserService    user.Service
 	AuthService    auth.Service
 	AuthHandler    *auth.Handler
+	TokenValidator *validators.TokenValidator
+	CacheService   cache.Service
+	SessionManager *session.Manager
 }
 
 func NewDependencyManager(router *gin.Engine,
-	cfg *config.Configuration,
 	mongodb *clients.MongoDB,
 	redisClient *redis.Client,
-	rabbitMQ *clients.RabbitMQ) *Manager {
+	rabbitMQ *clients.RabbitMQ,
+	cfg *config.Configuration) *Manager {
+	tokenValidator := validators.NewTokenValidator()
 	requestValidator := validators.NewRequestValidator(cfg)
 	emailService := email.NewEmailService(cfg, rabbitMQ)
-	sessionManager := session.NewManager(mongodb, cfg)
+	cacheService := cache.NewCacheService(redisClient, cfg)
+	sessionManager := session.NewManager(mongodb, cfg, cacheService)
 	userRepository := user.NewUserRepository(mongodb, cfg.Database.UserCollection)
-	cacheService := cache.NewCacheService(redisClient)
 	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
-	authService := auth.NewAuthService(requestValidator, userService, cacheService, cfg, sessionManager)
-	authHandler := auth.NewAuthHandler(cfg, authService)
+	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService)
+	authHandler := auth.NewAuthHandler(cfg, authService, tokenValidator)
 	return &Manager{
 		Router:         router,
 		Config:         cfg,
@@ -51,5 +55,7 @@ func NewDependencyManager(router *gin.Engine,
 		UserService:    userService,
 		AuthService:    authService,
 		AuthHandler:    authHandler,
+		CacheService:   cacheService,
+		SessionManager: sessionManager,
 	}
 }

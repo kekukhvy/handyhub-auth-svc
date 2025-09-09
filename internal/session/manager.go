@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"handyhub-auth-svc/clients"
+	"handyhub-auth-svc/internal/cache"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
 	"time"
@@ -18,13 +21,15 @@ var log = logrus.StandardLogger()
 
 // Manager handles session operations and lifecycle
 type Manager struct {
-	repository Repository
+	repository   Repository
+	cacheService cache.Service
 }
 
 // NewManager creates a new session manager with specified token expirations
-func NewManager(db *clients.MongoDB, cfg *config.Configuration) *Manager {
+func NewManager(db *clients.MongoDB, cfg *config.Configuration, cacheService cache.Service) *Manager {
 	return &Manager{
-		repository: NewSessionRepository(db, cfg.Database.SessionCollection),
+		repository:   NewSessionRepository(db, cfg.Database.SessionCollection),
+		cacheService: cacheService,
 	}
 }
 
@@ -153,4 +158,70 @@ func (m *Manager) InvalidateUserSessions(ctx context.Context, userID string) err
 		return err
 	}
 	return m.repository.InvalidateUserSessions(ctx, id)
+}
+
+func (m *Manager) ValidateSessionWithCache(ctx context.Context, sessionID string, userID primitive.ObjectID) (bool, error) {
+	log.WithField("session_id", sessionID).Debug("Validating session with cache")
+
+	// Check Redis cache first
+	cacheKey := fmt.Sprintf("session:%s:%s", userID.Hex(), sessionID)
+
+	// Try to get session from Redis
+	sessionData, err := m.cacheService.GetActiveSession(ctx, cacheKey)
+	if err != nil && !errors.Is(err, models.ErrRedisGet) {
+		log.WithError(err).Error("Failed to check Redis cache")
+		// Continue to MongoDB check on Redis errors
+	}
+
+	// If found in Redis and valid
+	if sessionData != nil {
+		log.WithField("session_id", sessionID).Debug("Session found in Redis cache")
+
+		// Update activity in cache
+		if err := m.cacheService.UpdateSessionActivity(ctx, cacheKey); err != nil {
+			log.WithError(err).Warn("Failed to update session activity in cache")
+		}
+
+		return true, nil
+	}
+
+	log.WithField("session_id", sessionID).Debug("Session not found in Redis, checking MongoDB")
+
+	// Fallback to MongoDB
+	session, err := m.repository.GetByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, models.ErrSessionNotFound) {
+			return false, models.ErrSessionNotFound
+		}
+		log.WithError(err).Error("Failed to get session from MongoDB")
+		return false, err
+	}
+
+	//Check if session is valid
+	if !session.IsValidSession() {
+		log.WithField("session_id", sessionID).Warn("Session found but invalid")
+		return false, models.ErrSessionExpired
+	}
+
+	//Session is valid - restore to Redis and update activity
+	session.UpdateActivity()
+
+	// Cache the session back to Redis
+	if err := m.cacheService.CacheActiveSession(ctx, session); err != nil {
+		log.WithError(err).Warn("Failed to restore session to cache")
+		// Don't fail the request if caching fails
+	}
+
+	// Update activity in MongoDB
+	if err := m.repository.Update(ctx, session); err != nil {
+		log.WithError(err).Error("Failed to update session activity in MongoDB")
+		// Don't fail the request if activity update fails
+	}
+
+	log.WithField("session_id", sessionID).Debug("Session validated and restored to cache")
+	return true, nil
+}
+
+func (m *Manager) GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error) {
+	return m.repository.GetActiveSessions(ctx, limit)
 }

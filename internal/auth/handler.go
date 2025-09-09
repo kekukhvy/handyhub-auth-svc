@@ -7,6 +7,7 @@ import (
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
 	"handyhub-auth-svc/internal/session"
+	"handyhub-auth-svc/internal/validators"
 	"net/http"
 	"time"
 
@@ -14,14 +15,16 @@ import (
 )
 
 type Handler struct {
-	cfg         *config.Configuration
-	authService Service
+	cfg            *config.Configuration
+	authService    Service
+	tokenValidator *validators.TokenValidator
 }
 
-func NewAuthHandler(cfg *config.Configuration, service Service) *Handler {
+func NewAuthHandler(cfg *config.Configuration, service Service, tokenValidator *validators.TokenValidator) *Handler {
 	return &Handler{
-		cfg:         cfg,
-		authService: service,
+		cfg:            cfg,
+		authService:    service,
+		tokenValidator: tokenValidator,
 	}
 }
 
@@ -224,4 +227,59 @@ func (h *Handler) ResetPasswordConfirm(c *gin.Context) {
 
 	log.Info("Password reset successfully")
 	c.JSON(http.StatusOK, models.NewSuccessResponse(models.MessagePasswordResetSuccess, nil))
+}
+
+func (h *Handler) VerifyToken(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(h.cfg.App.Timeout)*time.Second)
+	defer cancel()
+
+	// Extract token from Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		log.Error("Authorization header is missing")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrInvalidToken,
+			"Authorization header is required",
+		))
+		return
+	}
+
+	// Extract token from "Bearer <token>" format
+	tokenValidator := validators.NewTokenValidator()
+	token, err := tokenValidator.ExtractTokenFromHeader(authHeader)
+	if err != nil {
+		log.WithError(err).Error("Failed to extract token from header")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrInvalidToken,
+			"Invalid authorization header format",
+		))
+		return
+	}
+
+	// Create request object for service
+	req := &models.VerifyTokenRequest{
+		Token: token,
+	}
+
+	// Verify token and session
+	response, err := h.authService.VerifyToken(ctx, req)
+	if err != nil {
+		log.WithError(err).Error("Token verification failed")
+
+		switch {
+		case errors.Is(err, models.ErrInvalidToken), errors.Is(err, models.ErrTokenExpired):
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Invalid or expired token"))
+		case errors.Is(err, models.ErrSessionExpired), errors.Is(err, models.ErrSessionInactive):
+			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Session expired or inactive"))
+		default:
+			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(err, models.MessageInternalError))
+		}
+		return
+	}
+
+	log.WithField("user_id", response.UserID.Hex()).
+		WithField("session_id", response.SessionID).
+		Debug("Token verified successfully")
+
+	c.JSON(http.StatusOK, models.NewSuccessResponse("Token is valid", response))
 }

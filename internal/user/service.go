@@ -73,6 +73,9 @@ func (s *userService) CreateUser(ctx context.Context, user *models.User) (*model
 		return nil, err
 	}
 
+	// Cache user profile
+	s.cacheService.CacheUser(ctx, user, s.cfg.ExpirationMinutes)
+
 	log.WithField("email", createdUser.Email).Debug("User created successfully")
 	return createdUser, nil
 }

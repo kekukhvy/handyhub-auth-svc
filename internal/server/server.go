@@ -6,6 +6,7 @@ import (
 	"handyhub-auth-svc/clients"
 	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/dependency"
+	"handyhub-auth-svc/internal/session"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,11 +20,12 @@ import (
 var log = logrus.StandardLogger()
 
 type Server struct {
-	httpServer  *http.Server
-	config      *config.Configuration
-	mongodb     *clients.MongoDB
-	redisClient *clients.RedisClient
-	rabbitMQ    *clients.RabbitMQ
+	httpServer      *http.Server
+	config          *config.Configuration
+	mongodb         *clients.MongoDB
+	redisClient     *clients.RedisClient
+	rabbitMQ        *clients.RabbitMQ
+	cleanSessionJob *session.CleanupJob
 }
 
 func New(cfg *config.Configuration) *Server {
@@ -48,6 +50,9 @@ func (s *Server) Start() error {
 	if err := s.setupHTTPServer(); err != nil {
 		return err
 	}
+
+	cleanupContext := context.Background()
+	s.cleanSessionJob.Start(cleanupContext)
 
 	go func() {
 		log.Infof("Auth Service starting on port %s", s.config.Server.Port)
@@ -99,7 +104,9 @@ func (s *Server) setupHTTPServer() error {
 	gin.SetMode(s.config.Server.Mode)
 	router := gin.Default()
 
-	dependencyManager := dependency.NewDependencyManager(router, s.config, s.mongodb, s.redisClient.Client, s.rabbitMQ)
+	dependencyManager := dependency.NewDependencyManager(router, s.mongodb, s.redisClient.Client, s.rabbitMQ, s.config)
+	s.cleanSessionJob = session.NewCleanupJob(dependencyManager.SessionManager, dependencyManager.CacheService, s.config)
+
 	SetupRoutes(dependencyManager)
 
 	s.httpServer = &http.Server{
@@ -127,6 +134,10 @@ func (s *Server) waitForShutdown() {
 func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	if s.cleanSessionJob != nil {
+		s.cleanSessionJob.Stop()
+	}
 
 	if s.redisClient != nil {
 		if err := s.redisClient.Close(); err != nil {

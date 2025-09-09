@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"handyhub-auth-svc/internal/config"
 	"handyhub-auth-svc/internal/models"
 	"strconv"
 	"time"
@@ -20,16 +21,21 @@ type Service interface {
 	ResetFailedLoginAttempts(ctx context.Context, key string) error
 	CacheActiveSession(ctx context.Context, session *models.Session) error
 	InvalidateUserSessions(ctx context.Context, userID string) error
+	GetActiveSession(ctx context.Context, key string) (*models.ActiveSession, error)
+	UpdateSessionActivity(ctx context.Context, key string) error
 }
 
 var log = logrus.StandardLogger()
 
 type cacheService struct {
 	client *redis.Client
+	cfg    *config.CacheConfig
 }
 
-func NewCacheService(client *redis.Client) Service {
-	return &cacheService{client: client}
+func NewCacheService(client *redis.Client, cfg *config.Configuration) Service {
+	return &cacheService{
+		client: client,
+		cfg:    &cfg.Cache}
 }
 
 func (c *cacheService) CacheUser(ctx context.Context, user *models.User, duration int) error {
@@ -157,5 +163,58 @@ func (c *cacheService) InvalidateUserSessions(ctx context.Context, userID string
 		"deleted": deleted,
 	}).Info("User sessions invalidated from cache")
 
+	return nil
+}
+
+func (c *cacheService) GetActiveSession(ctx context.Context, key string) (*models.ActiveSession, error) {
+	log.WithField("key", key).Debug("Getting active session from cache")
+
+	data, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			log.WithField("key", key).Debug("Session not found in cache")
+			return nil, nil // Not an error, just not found
+		}
+		log.WithError(err).WithField("key", key).Error("Failed to get session from cache")
+		return nil, models.ErrRedisGet
+	}
+
+	var session models.ActiveSession
+	if err := json.Unmarshal([]byte(data), &session); err != nil {
+		log.WithError(err).WithField("key", key).Error("Failed to unmarshal session from cache")
+		return nil, models.ErrRedisGet
+	}
+
+	log.WithField("key", key).Debug("Session retrieved from cache successfully")
+	return &session, nil
+}
+
+func (c *cacheService) UpdateSessionActivity(ctx context.Context, key string) error {
+	log.WithField("key", key).Debug("Updating session activity in cache")
+
+	// Get current session
+	session, err := c.GetActiveSession(ctx, key)
+	if err != nil || session == nil {
+		return err
+	}
+
+	// Update last active time
+	session.LastActiveAt = time.Now()
+
+	// Re-cache with updated time and extended TTL
+	data, err := json.Marshal(session)
+	if err != nil {
+		log.WithError(err).Error("Failed to marshal session for activity update")
+		return models.ErrRedisSet
+	}
+
+	extendedTTL := time.Duration(c.cfg.ExtendedExpirationMinutes) * time.Minute
+	err = c.client.Set(ctx, key, data, extendedTTL).Err()
+	if err != nil {
+		log.WithError(err).WithField("key", key).Error("Failed to update session activity")
+		return models.ErrRedisSet
+	}
+
+	log.WithField("key", key).Debug("Session activity updated successfully")
 	return nil
 }

@@ -35,6 +35,9 @@ security:
   refresh-token-expiration: 1440  # minutes (24 hours)
   password-salt-rounds: 12
   login-rate-limit: 5
+  session-inactivity-timeout: 30
+  session-cleanup-interval: 10
+  session-cleanup-batch-size: 100
   password-validation:
     min-length: 6
     require-uppercase: true
@@ -55,6 +58,7 @@ email-service:
 
 cache:
   expiration-minutes: 60
+  extended-expiration-minutes: 30
 
 queue:
   rabbitmq:

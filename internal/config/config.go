@@ -59,12 +59,15 @@ type LogsSettings struct {
 }
 
 type SecuritySettings struct {
-	JwtKey                 string             `mapstructure:"jwt-key"`
-	AccessTokenExpiration  int                `mapstructure:"access-token-expiration"`
-	RefreshTokenExpiration int                `mapstructure:"refresh-token-expiration"`
-	PasswordSaltRounds     int                `mapstructure:"password-salt-rounds"`
-	PasswordValidation     PasswordValidation `mapstructure:"password-validation"`
-	LoginRateLimit         int                `mapstructure:"login-rate-limit"`
+	JwtKey                   string             `mapstructure:"jwt-key"`
+	AccessTokenExpiration    int                `mapstructure:"access-token-expiration"`
+	RefreshTokenExpiration   int                `mapstructure:"refresh-token-expiration"`
+	PasswordSaltRounds       int                `mapstructure:"password-salt-rounds"`
+	PasswordValidation       PasswordValidation `mapstructure:"password-validation"`
+	LoginRateLimit           int                `mapstructure:"login-rate-limit"`
+	SessionInactivityTimeout int                `mapstructure:"session-inactivity-timeout"`
+	SessionCleanupInterval   int                `mapstructure:"session-cleanup-interval"`
+	SessionCleanupBatchSize  int                `mapstructure:"session-cleanup-batch-size"`
 }
 
 type PasswordValidation struct {
@@ -89,7 +92,8 @@ type EmailService struct {
 }
 
 type CacheConfig struct {
-	ExpirationMinutes int `mapstructure:"expiration-minutes"`
+	ExpirationMinutes         int `mapstructure:"expiration-minutes"`
+	ExtendedExpirationMinutes int `mapstructure:"extended-expiration-minutes"`
 }
 
 type QueueConfig struct {

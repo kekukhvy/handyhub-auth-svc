@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type repository struct {
@@ -21,6 +22,7 @@ type Repository interface {
 	GetByID(ctx context.Context, sessionID string) (*models.Session, error)
 	Update(ctx context.Context, session *models.Session) error
 	InvalidateUserSessions(ctx context.Context, userID primitive.ObjectID) error
+	GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error)
 }
 
 func NewSessionRepository(db *clients.MongoDB, collectionName string) Repository {
@@ -105,4 +107,44 @@ func (r *repository) InvalidateUserSessions(ctx context.Context, userID primitiv
 		Info("User sessions invalidated")
 
 	return nil
+}
+
+func (r *repository) GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error) {
+	log.Debug("Getting active sessions for cleanup")
+
+	filter := bson.M{
+		"is_active": true,
+		"logout_at": nil, // Only sessions that haven't been explicitly logged out
+	}
+
+	limitInt64 := int64(limit)
+	options := options.FindOptions{
+		Limit: &limitInt64,
+		Sort:  bson.D{{"last_active_at", 1}}, // Сначала самые старые по активности
+	}
+
+	cursor, err := r.collection.Find(ctx, filter, &options)
+	if err != nil {
+		log.WithError(err).Error("Failed to find active sessions")
+		return nil, models.ErrDatabaseQuery
+	}
+	defer cursor.Close(ctx)
+
+	var sessions []*models.Session
+	for cursor.Next(ctx) && len(sessions) < limit {
+		var session models.Session
+		if err := cursor.Decode(&session); err != nil {
+			log.WithError(err).Error("Failed to decode session")
+			continue
+		}
+		sessions = append(sessions, &session)
+	}
+
+	if err := cursor.Err(); err != nil {
+		log.WithError(err).Error("Cursor error while reading sessions")
+		return nil, models.ErrDatabaseQuery
+	}
+
+	log.WithField("count", len(sessions)).Debug("Retrieved active sessions for cleanup")
+	return sessions, nil
 }
