@@ -92,7 +92,10 @@ func (s *authService) Register(ctx context.Context, req *models.RegisterRequest)
 		return nil, err
 	}
 
-	s.userService.SendVerificationEmail(ctx, createdUser.ID)
+	err = s.userService.SendVerificationEmail(ctx, createdUser.ID)
+	if err != nil {
+		log.WithError(err).WithField("user_id", createdUser.ID.Hex()).Error("Failed to send verification email")
+	}
 
 	return createdUser, nil
 }

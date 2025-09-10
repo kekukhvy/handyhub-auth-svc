@@ -21,6 +21,8 @@ WORKDIR /app
 
 COPY --from=builder /handyhub-auth-svc .
 
+COPY --from=builder /app/templates ./templates
+
 COPY --from=builder /app/internal/config /app/internal/config
 
 RUN mkdir -p logs
