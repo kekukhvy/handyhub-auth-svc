@@ -19,7 +19,6 @@ type Configuration struct {
 	EmailService EmailService      `mapstructure:"email-service"`
 	Cache        CacheConfig       `mapstructure:"cache"`
 	Queue        QueueConfig       `mapstructure:"queue"`
-	RabbitMQ     RabbitMQConfig    `mapstructure:"rabbitmq"`
 	Frontend     FrontendConfig    `mapstructure:"frontend"`
 }
 
@@ -151,6 +150,11 @@ func Load() *Configuration {
 		if db, err := strconv.Atoi(redisDB); err == nil {
 			cfg.Redis.Db = db
 		}
+	}
+
+	rabbitmqUrl := os.Getenv("RABBITMQ_URL")
+	if rabbitmqUrl != "" {
+		cfg.Queue.RabbitMQ.Url = rabbitmqUrl
 	}
 
 	jwtKey := os.Getenv("JWT_KEY")

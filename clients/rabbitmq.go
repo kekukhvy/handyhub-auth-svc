@@ -14,7 +14,7 @@ type RabbitMQ struct {
 }
 
 func NewRabbitMQ(cfg *config.RabbitMQConfig) (*RabbitMQ, error) {
-	log.Info("Connecting to RabbitMQ...")
+	log.WithField("url", "url:"+cfg.Url).Info("Connecting to RabbitMQ...")
 	conn, err := amqp.Dial(cfg.Url)
 	if err != nil {
 		log.WithError(err).Errorf("Failed to connect to RabbitMQ: %v", err)
