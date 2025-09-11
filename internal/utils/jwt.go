@@ -186,6 +186,11 @@ func (j *JWTManager) ValidateResetToken(tokenString string) (*Claims, error) {
 		return nil, models.ErrInvalidTokenType
 	}
 
+	if time.Now().After(claims.ExpiresAt.Time) {
+		return nil, models.ErrTokenExpired
+		return claims, nil
+	}
+
 	return claims, nil
 }
 

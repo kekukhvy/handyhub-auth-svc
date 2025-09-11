@@ -155,6 +155,7 @@ func (u *User) ToProfile() *UserProfile {
 		Language:         u.Language,
 		CreatedAt:        u.CreatedAt,
 		UpdatedAt:        u.UpdatedAt,
+		LastActiveAt:     u.LastActiveAt,
 	}
 }
 

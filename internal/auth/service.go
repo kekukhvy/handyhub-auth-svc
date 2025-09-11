@@ -146,8 +146,11 @@ func (s *authService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	// Reset failed login attempts on successful login
 	s.cacheService.ResetFailedLoginAttempts(ctx, rateLimitKey)
 
+	ipAddress, _ := ctx.Value("client_ip").(string)
+	userAgent, _ := ctx.Value("user_agent").(string)
+
 	// Create session (IP and UserAgent would be passed from handler)
-	session, err := s.sessionManager.CreateSession(ctx, user.ID, "", "")
+	session, err := s.sessionManager.CreateSession(ctx, user.ID, userAgent, ipAddress)
 	if err != nil {
 		log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to create session")
 		return nil, models.ErrSessionCreating
@@ -170,6 +173,8 @@ func (s *authService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	session.RefreshToken = refreshToken
 	session.AccessToken = accessToken
 	session.ExpiresAt = refreshExpiresAt
+	session.IPAddress = ipAddress
+	session.UserAgent = userAgent
 
 	s.sessionManager.Update(ctx, session)
 

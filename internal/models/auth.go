@@ -67,6 +67,7 @@ type UserProfile struct {
 	Language         string             `json:"language"`
 	CreatedAt        time.Time          `json:"createdAt"`
 	UpdatedAt        time.Time          `json:"updatedAt"`
+	LastActiveAt     *time.Time         `json:"lastActiveAt,omitempty"`
 }
 
 // LoginResponse represents successful login response

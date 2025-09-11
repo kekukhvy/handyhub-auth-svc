@@ -98,8 +98,8 @@ func (h *handler) Login(c *gin.Context) {
 	userAgent := session.ExtractUserAgent(c.Request)
 
 	// Add client info to context for auth service
-	c.Set("client_ip", ipAddress)
-	c.Set("user_agent", userAgent)
+	ctx = context.WithValue(ctx, "client_ip", ipAddress)
+	ctx = context.WithValue(ctx, "user_agent", userAgent)
 
 	// Authenticate user
 	loginResponse, err := h.authService.Login(ctx, &req)

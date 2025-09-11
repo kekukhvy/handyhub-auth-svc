@@ -11,6 +11,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type responseWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w *responseWriter) Write(b []byte) (int, error) {
+	w.body.Write(b)
+	return w.ResponseWriter.Write(b)
+}
+
 func RequestLoggingMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -20,6 +30,13 @@ func RequestLoggingMiddleware() gin.HandlerFunc {
 			bodyBytes, _ = io.ReadAll(c.Request.Body)
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
+
+		responseBody := &bytes.Buffer{}
+		wrappedWriter := &responseWriter{
+			ResponseWriter: c.Writer,
+			body:           responseBody,
+		}
+		c.Writer = wrappedWriter
 
 		requestData := map[string]interface{}{
 			"method":     c.Request.Method,
@@ -49,6 +66,23 @@ func RequestLoggingMiddleware() gin.HandlerFunc {
 		latency := time.Since(start)
 		requestData["status"] = c.Writer.Status()
 		requestData["latency"] = latency.String()
+
+		// Add response body to logging data
+		if responseBody.Len() > 0 {
+			var responseJSON interface{}
+			if err := json.Unmarshal(responseBody.Bytes(), &responseJSON); err == nil {
+				// Mask sensitive data in response if needed
+				maskedResponse := maskSensitiveResponseData(responseJSON)
+				requestData["response"] = maskedResponse
+			} else {
+				// If not JSON, log as string (truncate if too long)
+				responseStr := responseBody.String()
+				if len(responseStr) > 1000 {
+					responseStr = responseStr[:1000] + "... (truncated)"
+				}
+				requestData["response"] = responseStr
+			}
+		}
 
 		logrus.WithFields(logrus.Fields{
 			"request_data":       requestData,
@@ -95,6 +129,36 @@ func maskPasswords(data interface{}) interface{} {
 		result := make([]interface{}, len(v))
 		for i, value := range v {
 			result[i] = maskPasswords(value)
+		}
+		return result
+	default:
+		return v
+	}
+}
+
+// maskSensitiveResponseData masks sensitive fields in response
+func maskSensitiveResponseData(data interface{}) interface{} {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for key, value := range v {
+			lowerKey := strings.ToLower(key)
+			// Mask sensitive response fields
+			if lowerKey == "accesstoken" || lowerKey == "refreshtoken" || lowerKey == "token" {
+				if strVal, ok := value.(string); ok && len(strVal) > 10 {
+					result[key] = strVal[:10] + "***MASKED***"
+				} else {
+					result[key] = "***MASKED***"
+				}
+			} else {
+				result[key] = maskSensitiveResponseData(value)
+			}
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(v))
+		for i, value := range v {
+			result[i] = maskSensitiveResponseData(value)
 		}
 		return result
 	default:
