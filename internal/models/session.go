@@ -25,6 +25,22 @@ type Session struct {
 	DeviceInfo   *DeviceInfo        `json:"deviceInfo,omitempty" bson:"device_info,omitempty"`
 }
 
+type SessionCreateRequest struct {
+	UserID      primitive.ObjectID
+	UserAgent   string
+	IPAddress   string
+	ServiceName string
+	Action      string
+}
+
+type SessionUpdateRequest struct {
+	Session     *Session
+	ServiceName string
+	Action      string
+	UserAgent   string
+	IPAddress   string
+}
+
 // DeviceInfo represents device information for session tracking
 type DeviceInfo struct {
 	DeviceType string `json:"deviceType" bson:"device_type"` // mobile, desktop, tablet

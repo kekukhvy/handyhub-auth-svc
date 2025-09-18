@@ -7,6 +7,7 @@ import (
 	"handyhub-auth-svc/internal/utils"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -33,28 +34,20 @@ func NewAuthMiddleware(
 
 func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Extract and validate token
 		claims, err := m.authenticateRequest(c)
 		if err != nil {
-			return // Response already sent
+			return
 		}
 
-		// Validate session
-		_, err = m.validateUserSession(c, claims)
+		userSession, err := m.validateUserSession(c, claims)
 		if err != nil {
-			return // Response already sent
+			return
 		}
 
-		// Update session activity
-		m.updateSessionActivity(c, claims)
-
-		// Set user context and continue
+		m.updateSessionActivity(c, userSession, claims)
 		m.setUserContext(c, claims)
 
-		log.WithField("user_id", claims.UserID).
-			WithField("session_id", claims.SessionID).
-			Debug("User authenticated successfully")
-
+		m.logAuthSuccess(claims, userSession)
 		c.Next()
 	}
 }
@@ -94,7 +87,17 @@ func (m *AuthMiddleware) handleTokenValidationError(c *gin.Context, err error) {
 }
 
 func (m *AuthMiddleware) validateUserSession(c *gin.Context, claims *utils.Claims) (*models.Session, error) {
-	session, err := m.sessionService.GetByID(c.Request.Context(), claims.SessionID)
+	_, err := utils.GetUserIDFromClaims(claims)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrInvalidToken,
+			"Invalid user ID in token",
+		))
+		c.Abort()
+		return nil, err
+	}
+
+	userSession, err := m.sessionService.GetByID(c.Request.Context(), claims.SessionID)
 	if err != nil {
 		log.WithError(err).WithField("session_id", claims.SessionID).Error("Failed to retrieve session")
 		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(
@@ -105,8 +108,17 @@ func (m *AuthMiddleware) validateUserSession(c *gin.Context, claims *utils.Claim
 		return nil, err
 	}
 
-	if !m.sessionService.IsSessionValid(session) {
-		log.WithField("session_id", claims.SessionID).Warn("Invalid session")
+	validateReq := &models.SessionUpdateRequest{
+		Session:     userSession,
+		ServiceName: "auth.middleware.RequireAuth",
+		Action:      "session_validation",
+		UserAgent:   c.Request.UserAgent(),
+		IPAddress:   c.ClientIP(),
+	}
+
+	isValid, err := m.sessionService.ValidateSessionWithCache(c.Request.Context(), validateReq)
+	if err != nil || !isValid {
+		log.WithField("session_id", claims.SessionID).Warn("Invalid or expired session")
 		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
 			models.ErrSessionExpired,
 			"Session expired or invalid",
@@ -115,20 +127,32 @@ func (m *AuthMiddleware) validateUserSession(c *gin.Context, claims *utils.Claim
 		return nil, models.ErrSessionExpired
 	}
 
-	return session, nil
+	return validateReq.Session, nil
 }
 
-func (m *AuthMiddleware) updateSessionActivity(c *gin.Context, claims *utils.Claims) {
+func (m *AuthMiddleware) updateSessionActivity(c *gin.Context, userSession *models.Session, claims *utils.Claims) {
+	updateReq := &models.SessionUpdateRequest{
+		Session:     userSession,
+		ServiceName: "auth.middleware.RequireAuth",
+		Action:      "authenticated",
+		UserAgent:   c.Request.UserAgent(),
+		IPAddress:   c.ClientIP(),
+	}
+
+	m.sessionService.UpdateActivity(updateReq)
+
 	msg := &models.ActivityMessage{
 		UserID:      claims.UserID,
 		SessionID:   claims.SessionID,
-		ServiceName: "auth-service",
+		ServiceName: "auth.middleware.RequireAuth",
 		Action:      "authenticated",
+		UserAgent:   c.Request.UserAgent(),
+		IPAddress:   c.ClientIP(),
+		Timestamp:   time.Now(),
 	}
 
 	if err := m.sessionService.UpdateSessionActivity(c.Request.Context(), msg); err != nil {
 		log.WithError(err).WithField("session_id", claims.SessionID).Warn("Failed to update session activity")
-		// Not critical, continue
 	}
 }
 
@@ -139,13 +163,28 @@ func (m *AuthMiddleware) setUserContext(c *gin.Context, claims *utils.Claims) {
 	c.Set("user_role", claims.Role)
 }
 
+func (m *AuthMiddleware) logAuthSuccess(claims *utils.Claims, userSession *models.Session) {
+	deviceType := "unknown"
+	if userSession.DeviceInfo != nil {
+		deviceType = userSession.DeviceInfo.DeviceType
+	}
+
+	log.WithFields(logrus.Fields{
+		"user_id":     claims.UserID,
+		"session_id":  claims.SessionID,
+		"ip_address":  userSession.IPAddress,
+		"device_type": deviceType,
+		"service":     "auth.middleware.RequireAuth",
+		"action":      "authenticated",
+	}).Debug("User authenticated successfully")
+}
+
 func (m *AuthMiddleware) extractToken(c *gin.Context) (string, error) {
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		return "", models.ErrInvalidToken
 	}
 
-	// Check Bearer format
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		return "", models.ErrInvalidToken

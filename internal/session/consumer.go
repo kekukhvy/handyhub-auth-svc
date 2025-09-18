@@ -127,20 +127,17 @@ func (c *consumer) handleMessage(ctx context.Context, delivery amqp.Delivery) er
 		"routing_key":  delivery.RoutingKey,
 	}).Debug("Processing activity message")
 
-	// Parse message
 	var msg models.ActivityMessage
 	if err := json.Unmarshal(delivery.Body, &msg); err != nil {
 		log.WithError(err).Error("Failed to unmarshal activity message")
 		return err
 	}
 
-	// Validate message
 	if err := c.validateMessage(&msg); err != nil {
 		log.WithError(err).Error("Invalid activity message")
 		return err
 	}
 
-	// Process the activity update
 	if err := c.processActivityUpdate(ctx, &msg); err != nil {
 		log.WithError(err).WithFields(logrus.Fields{
 			"user_id":    msg.UserID,
@@ -151,13 +148,7 @@ func (c *consumer) handleMessage(ctx context.Context, delivery amqp.Delivery) er
 		return err
 	}
 
-	log.WithFields(logrus.Fields{
-		"user_id":    msg.UserID,
-		"session_id": msg.SessionID,
-		"service":    msg.ServiceName,
-		"action":     msg.Action,
-	}).Debug("Activity message processed successfully")
-
+	c.logSuccessfulProcessing(&msg)
 	return nil
 }
 
@@ -179,25 +170,27 @@ func (c *consumer) validateMessage(msg *models.ActivityMessage) error {
 
 // processActivityUpdate processes the user activity update
 func (c *consumer) processActivityUpdate(ctx context.Context, msg *models.ActivityMessage) error {
-
 	cacheKey := fmt.Sprintf("session:%s:%s", msg.UserID, msg.SessionID)
+
 	if err := c.cacheService.UpdateSessionActivity(ctx, cacheKey); err != nil {
 		log.WithError(err).WithField("session_id", msg.SessionID).Warn("Failed to update session activity in cache")
-		// Don't fail the whole operation if cache update fails
 	}
 
-	// Update session activity in database
 	if err := c.sessionManager.UpdateSessionActivity(ctx, msg); err != nil {
 		log.WithError(err).WithField("session_id", msg.SessionID).Error("Failed to update session activity in database")
 		return err
 	}
 
+	return nil
+}
+
+func (c *consumer) logSuccessfulProcessing(msg *models.ActivityMessage) {
 	log.WithFields(logrus.Fields{
 		"user_id":    msg.UserID,
 		"session_id": msg.SessionID,
 		"service":    msg.ServiceName,
 		"action":     msg.Action,
-	}).Debug("Activity updated successfully")
-
-	return nil
+		"ip_address": msg.IPAddress,
+		"timestamp":  msg.Timestamp,
+	}).Debug("Activity message processed successfully")
 }

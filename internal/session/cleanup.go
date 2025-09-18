@@ -134,24 +134,19 @@ func (j *CleanupJob) cleanup(ctx context.Context) error {
 func (j *CleanupJob) processSession(ctx context.Context, session *models.Session, expiredCount, updatedCount, errorCount, restoredCount *int) error {
 	sessionKey := fmt.Sprintf("session:%s:%s", session.UserID.Hex(), session.SessionID)
 
-	// Check if session exists in Redis
 	activeSession, err := j.cacheService.GetActiveSession(ctx, sessionKey)
 	if err != nil {
 		log.WithError(err).WithField("session_id", session.SessionID).Warn("Failed to check session in Redis")
-		// Continue processing even if Redis check fails
 	}
 
-	// If session exists in Redis, it's actively used
 	if activeSession != nil {
 		log.WithField("session_id", session.SessionID).Debug("Session found in Redis, skipping")
 		return nil
 	}
 
-	// Session not in Redis - check if it should be expired due to inactivity
 	timeSinceLastActivity := time.Since(session.LastActiveAt)
 
 	if timeSinceLastActivity > j.inactivityTimeout {
-		// Session expired due to inactivity
 		log.WithFields(logrus.Fields{
 			"session_id":    session.SessionID,
 			"user_id":       session.UserID.Hex(),
@@ -159,7 +154,6 @@ func (j *CleanupJob) processSession(ctx context.Context, session *models.Session
 			"inactive_for":  timeSinceLastActivity,
 		}).Info("Marking session as expired due to inactivity")
 
-		// Mark session as inactive
 		if err := j.markSessionAsExpired(ctx, session); err != nil {
 			return fmt.Errorf("failed to mark session as expired: %w", err)
 		}
@@ -167,8 +161,6 @@ func (j *CleanupJob) processSession(ctx context.Context, session *models.Session
 		*expiredCount++
 		*updatedCount++
 	} else {
-		// Session is within activity window but missing from Redis
-		// This could happen after Redis restart - restore it
 		log.WithFields(logrus.Fields{
 			"session_id":    session.SessionID,
 			"last_activity": session.LastActiveAt,
@@ -177,7 +169,6 @@ func (j *CleanupJob) processSession(ctx context.Context, session *models.Session
 
 		if err := j.cacheService.CacheActiveSession(ctx, session); err != nil {
 			log.WithError(err).WithField("session_id", session.SessionID).Warn("Failed to restore session to Redis")
-			// Don't return error, continue with other sessions
 		} else {
 			*restoredCount++
 		}
@@ -187,6 +178,12 @@ func (j *CleanupJob) processSession(ctx context.Context, session *models.Session
 }
 
 func (j *CleanupJob) markSessionAsExpired(ctx context.Context, session *models.Session) error {
-	session.IsActive = false
-	return j.manager.Update(ctx, session)
+	updateReq := &models.SessionUpdateRequest{
+		Session:     session,
+		ServiceName: "session.cleanup.CleanupJob",
+		Action:      "session_expired_by_cleanup",
+	}
+
+	j.manager.InvalidateSession(ctx, updateReq)
+	return nil
 }
