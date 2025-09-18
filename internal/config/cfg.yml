@@ -62,6 +62,8 @@ cache:
   extended-expiration-minutes: 30
 
 queue:
+  user-activity-queue: "user_activity_queue"
+  user-activity-consumer: "user_activity_consumer"
   rabbitmq:
     url: "amqp://guest:guest@localhost:5672/"
     exchange: "handyhub"

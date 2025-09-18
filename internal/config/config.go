@@ -96,7 +96,9 @@ type CacheConfig struct {
 }
 
 type QueueConfig struct {
-	RabbitMQ RabbitMQConfig `mapstructure:"rabbitmq"`
+	RabbitMQ             RabbitMQConfig `mapstructure:"rabbitmq"`
+	UserActivityQueue    string         `mapstructure:"user-activity-queue"`
+	UserActivityConsumer string         `mapstructure:"user-activity-consumer"`
 }
 
 type RabbitMQConfig struct {

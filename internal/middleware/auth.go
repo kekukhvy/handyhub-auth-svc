@@ -33,69 +33,23 @@ func NewAuthMiddleware(
 
 func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Extract token from Authorization header
-		token, err := m.extractToken(c)
+		// Extract and validate token
+		claims, err := m.authenticateRequest(c)
 		if err != nil {
-			log.WithError(err).Error("Failed to extract token")
-			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
-				models.ErrUnauthorized,
-				"Authorization token is required",
-			))
-			c.Abort()
-			return
+			return // Response already sent
 		}
 
-		// Validate JWT token
-		claims, err := m.jwtManager.ValidateAccessToken(token)
-		if err != nil {
-			log.WithError(err).Error("Invalid access token")
-
-			switch err {
-			case models.ErrTokenExpired:
-				c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Token expired"))
-			case models.ErrInvalidToken:
-				c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Invalid token"))
-			default:
-				c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Token validation failed"))
-			}
-			c.Abort()
-			return
-		}
-
-		session, err := m.sessionService.GetByID(c.Request.Context(), claims.SessionID)
-		if err != nil {
-			log.WithError(err).WithField("session_id", claims.SessionID).Error("Failed to retrieve session")
-			c.JSON(http.StatusInternalServerError, models.NewErrorResponse(
-				models.ErrInternalServer,
-				"Session retrieval error",
-			))
-			c.Abort()
-			return
-		}
 		// Validate session
-		isValid := m.sessionService.IsSessionValid(session)
-
-		if !isValid {
-			log.WithField("session_id", claims.SessionID).Warn("Invalid session")
-			c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
-				models.ErrSessionExpired,
-				"Session expired or invalid",
-			))
-			c.Abort()
-			return
+		_, err = m.validateUserSession(c, claims)
+		if err != nil {
+			return // Response already sent
 		}
 
 		// Update session activity
-		if err := m.sessionService.UpdateSessionActivity(c.Request.Context(), claims.SessionID); err != nil {
-			log.WithError(err).WithField("session_id", claims.SessionID).Warn("Failed to update session activity")
-			// Not critical, continue
-		}
+		m.updateSessionActivity(c, claims)
 
-		// Store user information in context
-		c.Set("user_id", claims.UserID)
-		c.Set("session_id", claims.SessionID)
-		c.Set("user_email", claims.Email)
-		c.Set("user_role", claims.Role)
+		// Set user context and continue
+		m.setUserContext(c, claims)
 
 		log.WithField("user_id", claims.UserID).
 			WithField("session_id", claims.SessionID).
@@ -103,6 +57,86 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func (m *AuthMiddleware) authenticateRequest(c *gin.Context) (*utils.Claims, error) {
+	token, err := m.extractToken(c)
+	if err != nil {
+		log.WithError(err).Error("Failed to extract token")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrUnauthorized,
+			"Authorization token is required",
+		))
+		c.Abort()
+		return nil, err
+	}
+
+	claims, err := m.jwtManager.ValidateAccessToken(token)
+	if err != nil {
+		log.WithError(err).Error("Invalid access token")
+		m.handleTokenValidationError(c, err)
+		c.Abort()
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func (m *AuthMiddleware) handleTokenValidationError(c *gin.Context, err error) {
+	switch err {
+	case models.ErrTokenExpired:
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Token expired"))
+	case models.ErrInvalidToken:
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Invalid token"))
+	default:
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(err, "Token validation failed"))
+	}
+}
+
+func (m *AuthMiddleware) validateUserSession(c *gin.Context, claims *utils.Claims) (*models.Session, error) {
+	session, err := m.sessionService.GetByID(c.Request.Context(), claims.SessionID)
+	if err != nil {
+		log.WithError(err).WithField("session_id", claims.SessionID).Error("Failed to retrieve session")
+		c.JSON(http.StatusInternalServerError, models.NewErrorResponse(
+			models.ErrInternalServer,
+			"Session retrieval error",
+		))
+		c.Abort()
+		return nil, err
+	}
+
+	if !m.sessionService.IsSessionValid(session) {
+		log.WithField("session_id", claims.SessionID).Warn("Invalid session")
+		c.JSON(http.StatusUnauthorized, models.NewErrorResponse(
+			models.ErrSessionExpired,
+			"Session expired or invalid",
+		))
+		c.Abort()
+		return nil, models.ErrSessionExpired
+	}
+
+	return session, nil
+}
+
+func (m *AuthMiddleware) updateSessionActivity(c *gin.Context, claims *utils.Claims) {
+	msg := &models.ActivityMessage{
+		UserID:      claims.UserID,
+		SessionID:   claims.SessionID,
+		ServiceName: "auth-service",
+		Action:      "authenticated",
+	}
+
+	if err := m.sessionService.UpdateSessionActivity(c.Request.Context(), msg); err != nil {
+		log.WithError(err).WithField("session_id", claims.SessionID).Warn("Failed to update session activity")
+		// Not critical, continue
+	}
+}
+
+func (m *AuthMiddleware) setUserContext(c *gin.Context, claims *utils.Claims) {
+	c.Set("user_id", claims.UserID)
+	c.Set("session_id", claims.SessionID)
+	c.Set("user_email", claims.Email)
+	c.Set("user_role", claims.Role)
 }
 
 func (m *AuthMiddleware) extractToken(c *gin.Context) (string, error) {

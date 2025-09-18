@@ -18,6 +18,8 @@ type Session struct {
 	CreatedAt    time.Time          `json:"createdAt" bson:"created_at"`
 	ExpiresAt    time.Time          `json:"expiresAt" bson:"expires_at"`
 	LastActiveAt time.Time          `json:"lastActiveAt" bson:"last_active_at"`
+	LastService  string             `json:"lastService,omitempty" bson:"last_service,omitempty"`
+	LastAction   string             `json:"lastAction,omitempty" bson:"last_action,omitempty"`
 	IsActive     bool               `json:"isActive" bson:"is_active"`
 	LogoutAt     *time.Time         `json:"logoutAt,omitempty" bson:"logout_at,omitempty"`
 	DeviceInfo   *DeviceInfo        `json:"deviceInfo,omitempty" bson:"device_info,omitempty"`
@@ -114,6 +116,17 @@ func (s *Session) GetStatus() string {
 		return SessionStatusExpired
 	}
 	return SessionStatusActive
+}
+
+type ActivityMessage struct {
+	UserID      string            `json:"user_id"`
+	SessionID   string            `json:"session_id"`
+	ServiceName string            `json:"service_name"`
+	Action      string            `json:"action"`
+	IPAddress   string            `json:"ip_address,omitempty"`
+	UserAgent   string            `json:"user_agent,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Timestamp   time.Time         `json:"timestamp"`
 }
 
 // ToActiveSession converts Session to ActiveSession for Redis storage

@@ -40,7 +40,7 @@ type Manager interface {
 	ValidateSessionWithCache(ctx context.Context, sessionID string, userID primitive.ObjectID) (bool, error)
 	GetActiveSessions(ctx context.Context, limit int) ([]*models.Session, error)
 	GetSessionByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error)
-	UpdateSessionActivity(ctx context.Context, sessionID string) error
+	UpdateSessionActivity(ctx context.Context, msg *models.ActivityMessage) error
 }
 
 // NewManager creates a new session manager with specified token expirations
@@ -253,18 +253,31 @@ func (m *manager) GetSessionByRefreshToken(ctx context.Context, refreshToken str
 	return m.repository.GetByRefreshToken(ctx, refreshToken)
 }
 
-func (m *manager) UpdateSessionActivity(ctx context.Context, sessionID string) error {
-	// Update in database
-	if err := m.repository.UpdateActivity(ctx, sessionID); err != nil {
-		log.WithError(err).WithField("session_id", sessionID).Error("Failed to update session activity in database")
+func (m *manager) UpdateSessionActivity(ctx context.Context, msg *models.ActivityMessage) error {
+	// Get current session
+	session, err := m.repository.GetByID(ctx, msg.SessionID)
+	if err != nil {
 		return err
 	}
 
-	// Update in cache
-	if err := m.cacheService.UpdateSessionActivity(ctx, sessionID); err != nil {
-		log.WithError(err).WithField("session_id", sessionID).Warn("Failed to update cached session activity")
+	// Update activity fields
+	session.LastActiveAt = time.Now()
+	session.LastService = msg.ServiceName
+	session.LastAction = msg.Action
+
+	// Update IP and UserAgent if provided
+	if msg.IPAddress != "" {
+		session.IPAddress = msg.IPAddress
+	}
+	if msg.UserAgent != "" {
+		session.UserAgent = msg.UserAgent
+	}
+
+	if err := m.cacheService.UpdateSessionActivity(ctx, msg.SessionID); err != nil {
+		log.WithError(err).WithField("session_id", msg.SessionID).Warn("Failed to update cached session activity")
 		// Not critical, continue
 	}
 
-	return nil
+	// Save to database
+	return m.repository.Update(ctx, session)
 }

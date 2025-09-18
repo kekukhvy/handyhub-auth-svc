@@ -199,53 +199,79 @@ func (s *authService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 }
 
 func (s *authService) VerifyEmail(ctx context.Context, token string) error {
-	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Info("Verifying email with token")
+	// Validate and sanitize token
+	if err := s.validateEmailToken(token); err != nil {
+		return err
+	}
 
-	// Validate token format (basic sanitization)
+	// Get user by verification token
+	user, err := s.getUserByVerificationToken(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	// Check verification status and expiration
+	if err := s.checkVerificationEligibility(user); err != nil {
+		return err
+	}
+
+	// Perform email verification
+	if err := s.performEmailVerification(ctx, user); err != nil {
+		return err
+	}
+
+	log.WithField("email", user.Email).Info("Email verified successfully")
+	return nil
+}
+
+func (s *authService) validateEmailToken(token string) error {
 	if len(token) == 0 {
 		return models.ErrVerificationTokenInvalid
 	}
 
-	// Sanitize token
 	token = strings.TrimSpace(token)
-	if len(token) < 10 { // minimum reasonable token length
+	if len(token) < 10 {
 		return models.ErrVerificationTokenInvalid
 	}
+	return nil
+}
 
-	// Get user by verification token
+func (s *authService) getUserByVerificationToken(ctx context.Context, token string) (*models.User, error) {
+	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Info("Verifying email with token")
+
 	user, err := s.userService.GetUserByVerificationToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			log.Warn("Verification token not found or invalid")
-			return models.ErrVerificationTokenInvalid
+			return nil, models.ErrVerificationTokenInvalid
 		}
 		log.WithError(err).Error("Failed to get user by verification token")
-		return err
+		return nil, err
 	}
+	return user, nil
+}
 
-	// Check if email is already verified
+func (s *authService) checkVerificationEligibility(user *models.User) error {
 	if user.IsEmailVerified {
 		log.WithField("email", user.Email).Warn("Email already verified")
 		return models.ErrEmailAlreadyVerified
 	}
 
-	// Check if token is expired
 	if user.VerificationExpires != nil && time.Now().After(*user.VerificationExpires) {
 		log.WithField("email", user.Email).Warn("Verification token expired")
 		return models.ErrVerificationTokenExpired
 	}
+	return nil
+}
 
-	// Verify email
-	err = s.userService.VerifyUserEmail(ctx, user.ID)
-	if err != nil {
+func (s *authService) performEmailVerification(ctx context.Context, user *models.User) error {
+	if err := s.userService.VerifyUserEmail(ctx, user.ID); err != nil {
 		log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to verify user email")
 		return err
 	}
 
-	// Clear user cache after email verification
+	// Update user cache after verification
 	s.cacheService.CacheUser(ctx, user, s.cfg.Cache.ExpirationMinutes)
-
-	log.WithField("email", user.Email).Info("Email verified successfully")
 	return nil
 }
 
@@ -327,44 +353,27 @@ func (s *authService) InvalidateAllUserSessions(ctx context.Context, userID stri
 	}
 	return nil
 }
-
 func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRequest) (*models.VerifyTokenResponse, error) {
-	log.WithField("token_prefix", req.Token[:min(10, len(req.Token))]+"...").Debug("Verifying token")
-
 	// Validate request
 	if validationErrors := s.validator.ValidateVerifyTokenRequest(req); validationErrors.HasErrors() {
 		return nil, models.ErrInvalidRequest
 	}
 
-	// Parse and validate JWT token structure
-	claims, err := s.jwtManager.ValidateAccessToken(req.Token)
+	// Parse and validate JWT token
+	claims, err := s.validateTokenClaims(req.Token)
 	if err != nil {
-		log.WithError(err).Debug("JWT validation failed")
 		return nil, err
 	}
 
-	// Convert string userID to ObjectID
-	userID, err := utils.GetUserIDFromClaims(claims)
+	// Validate session
+	userID, err := s.validateUserSession(ctx, claims)
 	if err != nil {
-		log.WithError(err).Error("Invalid user ID in token")
-		return nil, models.ErrInvalidToken
-	}
-
-	// Validate session using Redis-first strategy
-	isValid, err := s.sessionManager.ValidateSessionWithCache(ctx, claims.SessionID, userID)
-	if err != nil {
-		log.WithError(err).WithField("session_id", claims.SessionID).Error("Session validation failed")
 		return nil, err
 	}
 
-	if !isValid {
-		log.WithField("session_id", claims.SessionID).Warn("Session is invalid or expired")
-		return nil, models.ErrSessionExpired
-	}
+	// Update session activity
+	s.updateTokenActivity(ctx, userID, claims.SessionID)
 
-	s.sessionManager.UpdateSessionActivity(ctx, claims.SessionID)
-
-	// Return successful response
 	return &models.VerifyTokenResponse{
 		Valid:     true,
 		UserID:    userID,
@@ -374,21 +383,96 @@ func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRe
 	}, nil
 }
 
+func (s *authService) validateTokenClaims(token string) (*utils.Claims, error) {
+	log.WithField("token_prefix", token[:min(10, len(token))]+"...").Debug("Validating token claims")
+
+	claims, err := s.jwtManager.ValidateAccessToken(token)
+	if err != nil {
+		log.WithError(err).Debug("JWT validation failed")
+		return nil, err
+	}
+	return claims, nil
+}
+
+func (s *authService) validateUserSession(ctx context.Context, claims *utils.Claims) (primitive.ObjectID, error) {
+	userID, err := utils.GetUserIDFromClaims(claims)
+	if err != nil {
+		log.WithError(err).Error("Invalid user ID in token")
+		return primitive.NilObjectID, models.ErrInvalidToken
+	}
+
+	isValid, err := s.sessionManager.ValidateSessionWithCache(ctx, claims.SessionID, userID)
+	if err != nil {
+		log.WithError(err).WithField("session_id", claims.SessionID).Error("Session validation failed")
+		return primitive.NilObjectID, err
+	}
+
+	if !isValid {
+		log.WithField("session_id", claims.SessionID).Warn("Session is invalid or expired")
+		return primitive.NilObjectID, models.ErrSessionExpired
+	}
+
+	return userID, nil
+}
+
+func (s *authService) updateTokenActivity(ctx context.Context, userID primitive.ObjectID, sessionID string) {
+	msg := models.ActivityMessage{
+		UserID:      userID.Hex(),
+		SessionID:   sessionID,
+		Action:      "token_verified",
+		ServiceName: "auth_service",
+		Timestamp:   time.Now(),
+	}
+	s.sessionManager.UpdateSessionActivity(ctx, &msg)
+}
+
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error) {
-	// Validate refresh token format
+	// Validate and parse refresh token
+	claims, err := s.validateRefreshToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify user eligibility
+	user, err := s.verifyUserForRefresh(ctx, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get or create session
+	session, err := s.getOrCreateSession(ctx, refreshToken, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate new tokens and update session
+	response, err := s.generateTokensAndUpdateSession(ctx, user, session)
+	if err != nil {
+		return nil, err
+	}
+
+	log.WithField("user_id", user.ID.Hex()).
+		WithField("session_id", session.SessionID).
+		Info("Token refreshed successfully")
+
+	return response, nil
+}
+
+func (s *authService) validateRefreshToken(refreshToken string) (*utils.Claims, error) {
 	if validationErrors := s.validator.ValidateRefreshTokenRequest(&models.RefreshTokenRequest{RefreshToken: refreshToken}); validationErrors.HasErrors() {
 		return nil, models.ErrInvalidToken
 	}
 
-	// Validate refresh token
 	claims, err := s.jwtManager.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		log.WithError(err).Error("Invalid refresh token")
 		return nil, err
 	}
+	return claims, nil
+}
 
-	// Get user to ensure they're still active
-	userID, _ := primitive.ObjectIDFromHex(claims.UserID)
+func (s *authService) verifyUserForRefresh(ctx context.Context, userIDStr string) (*models.User, error) {
+	userID, _ := primitive.ObjectIDFromHex(userIDStr)
 	user, err := s.userService.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -398,39 +482,37 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		log.WithField("user_id", user.ID.Hex()).Warn("Inactive user token refresh attempt")
 		return nil, models.ErrUserInactive
 	}
+	return user, nil
+}
 
-	// Get session by refresh token
-	currentSession, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
+func (s *authService) getOrCreateSession(ctx context.Context, refreshToken string, userID primitive.ObjectID) (*models.Session, error) {
+	session, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		log.WithError(err).Error("Failed to find session by refresh token")
 	}
 
-	if currentSession == nil {
-		currentSession, err = s.sessionManager.CreateSession(ctx, userID, "", "")
+	if session == nil {
+		session, err = s.sessionManager.CreateSession(ctx, userID, "", "")
 		if err != nil {
-			log.WithError(err).WithField("user_id", user.ID.Hex()).Error("Failed to create new session during refresh")
+			log.WithError(err).WithField("user_id", userID.Hex()).Error("Failed to create new session during refresh")
 			return nil, models.ErrSessionCreating
 		}
 	}
+	return session, nil
+}
 
-	// Generate new access token
-	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, currentSession.SessionID, user.Email, user.Role)
+func (s *authService) generateTokensAndUpdateSession(ctx context.Context, user *models.User, session *models.Session) (*models.RefreshTokenResponse, error) {
+	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, session.SessionID, user.Email, user.Role)
 	if err != nil {
 		log.WithError(err).Error("Failed to generate new access token")
 		return nil, models.ErrTokenGenerating
 	}
 
-	currentSession.AccessToken = accessToken
-	currentSession.RefreshToken = refreshToken
-	currentSession.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.RefreshTokenExpiration))
+	session.AccessToken = accessToken
+	session.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.RefreshTokenExpiration))
 
-	// Update session activity
-	s.sessionManager.Update(ctx, currentSession)
-	s.cacheService.CacheActiveSession(ctx, currentSession)
-
-	log.WithField("user_id", user.ID.Hex()).
-		WithField("session_id", currentSession.SessionID).
-		Info("Token refreshed successfully")
+	s.sessionManager.Update(ctx, session)
+	s.cacheService.CacheActiveSession(ctx, session)
 
 	return &models.RefreshTokenResponse{
 		AccessToken:          accessToken,

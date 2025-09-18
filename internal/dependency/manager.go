@@ -17,20 +17,21 @@ import (
 )
 
 type Manager struct {
-	Router         *gin.Engine
-	Config         *config.Configuration
-	Mongodb        *clients.MongoDB
-	Redis          *redis.Client
-	RabbitMQ       *clients.RabbitMQ
-	EmailService   email.Service
-	UserRepository user.Repository
-	UserService    user.Service
-	AuthService    auth.Service
-	AuthHandler    auth.Handler
-	TokenValidator *validators.TokenValidator
-	CacheService   cache.Service
-	SessionManager session.Manager
-	AuthMiddleware *middleware.AuthMiddleware
+	Router           *gin.Engine
+	Config           *config.Configuration
+	Mongodb          *clients.MongoDB
+	Redis            *redis.Client
+	RabbitMQ         *clients.RabbitMQ
+	EmailService     email.Service
+	UserRepository   user.Repository
+	UserService      user.Service
+	AuthService      auth.Service
+	AuthHandler      auth.Handler
+	TokenValidator   *validators.TokenValidator
+	CacheService     cache.Service
+	SessionManager   session.Manager
+	AuthMiddleware   *middleware.AuthMiddleware
+	ActivityConsumer session.Consumer
 }
 
 func NewDependencyManager(router *gin.Engine,
@@ -49,20 +50,21 @@ func NewDependencyManager(router *gin.Engine,
 	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService, jwtManager)
 	authHandler := auth.NewAuthHandler(cfg, authService, tokenValidator)
 	authMiddleware := middleware.NewAuthMiddleware(jwtManager, sessionManager, userService)
-
+	activityConsumer := session.NewConsumer(rabbitMQ.Channel, sessionManager, cacheService, cfg)
 	return &Manager{
-		Router:         router,
-		Config:         cfg,
-		Mongodb:        mongodb,
-		Redis:          redisClient,
-		RabbitMQ:       rabbitMQ,
-		EmailService:   emailService,
-		UserRepository: userRepository,
-		UserService:    userService,
-		AuthService:    authService,
-		AuthHandler:    authHandler,
-		CacheService:   cacheService,
-		SessionManager: sessionManager,
-		AuthMiddleware: authMiddleware,
+		Router:           router,
+		Config:           cfg,
+		Mongodb:          mongodb,
+		Redis:            redisClient,
+		RabbitMQ:         rabbitMQ,
+		EmailService:     emailService,
+		UserRepository:   userRepository,
+		UserService:      userService,
+		AuthService:      authService,
+		AuthHandler:      authHandler,
+		CacheService:     cacheService,
+		SessionManager:   sessionManager,
+		AuthMiddleware:   authMiddleware,
+		ActivityConsumer: activityConsumer,
 	}
 }

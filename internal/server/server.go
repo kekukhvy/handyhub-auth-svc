@@ -20,12 +20,13 @@ import (
 var log = logrus.StandardLogger()
 
 type Server struct {
-	httpServer      *http.Server
-	config          *config.Configuration
-	mongodb         *clients.MongoDB
-	redisClient     *clients.RedisClient
-	rabbitMQ        *clients.RabbitMQ
-	cleanSessionJob *session.CleanupJob
+	httpServer       *http.Server
+	config           *config.Configuration
+	mongodb          *clients.MongoDB
+	redisClient      *clients.RedisClient
+	rabbitMQ         *clients.RabbitMQ
+	cleanSessionJob  *session.CleanupJob
+	activityConsumer session.Consumer
 }
 
 func New(cfg *config.Configuration) *Server {
@@ -53,6 +54,11 @@ func (s *Server) Start() error {
 
 	cleanupContext := context.Background()
 	s.cleanSessionJob.Start(cleanupContext)
+
+	if err := s.activityConsumer.Start(cleanupContext); err != nil {
+		log.WithError(err).Error("Failed to start activity consumer")
+		return err
+	}
 
 	go func() {
 		log.Infof("Auth Service starting on port %s", s.config.Server.Port)
@@ -106,7 +112,7 @@ func (s *Server) setupHTTPServer() error {
 
 	dependencyManager := dependency.NewDependencyManager(router, s.mongodb, s.redisClient.Client, s.rabbitMQ, s.config)
 	s.cleanSessionJob = session.NewCleanupJob(dependencyManager.SessionManager, dependencyManager.CacheService, s.config)
-
+	s.activityConsumer = dependencyManager.ActivityConsumer
 	SetupRoutes(dependencyManager)
 
 	s.httpServer = &http.Server{
@@ -160,6 +166,14 @@ func (s *Server) Shutdown() {
 			log.WithError(err).Error("Error disconnecting MongoDB")
 		} else {
 			log.Info("MongoDB disconnected")
+		}
+	}
+
+	if s.activityConsumer != nil {
+		if err := s.activityConsumer.Stop(); err != nil {
+			log.WithError(err).Error("Error stopping activity consumer")
+		} else {
+			log.Info("Activity consumer stopped")
 		}
 	}
 
