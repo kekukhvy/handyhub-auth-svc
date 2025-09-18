@@ -41,6 +41,12 @@ type SessionUpdateRequest struct {
 	IPAddress   string
 }
 
+type SessionGetRequest struct {
+	SessionID   string
+	ServiceName string
+	Action      string
+}
+
 // DeviceInfo represents device information for session tracking
 type DeviceInfo struct {
 	DeviceType string `json:"deviceType" bson:"device_type"` // mobile, desktop, tablet
@@ -67,6 +73,37 @@ type ActiveSession struct {
 	LastActiveAt time.Time          `json:"lastActiveAt"`
 	IPAddress    string             `json:"ipAddress,omitempty"`
 	UserAgent    string             `json:"userAgent,omitempty"`
+}
+
+type SessionInfo struct {
+	SessionID    string             `json:"sessionId"`
+	UserID       primitive.ObjectID `json:"userId"`
+	IsActive     bool               `json:"isActive"`
+	IsValid      bool               `json:"isValid"`
+	CreatedAt    time.Time          `json:"createdAt"`
+	ExpiresAt    time.Time          `json:"expiresAt"`
+	LastActiveAt time.Time          `json:"lastActiveAt"`
+	IPAddress    string             `json:"ipAddress,omitempty"`
+	DeviceType   string             `json:"deviceType,omitempty"`
+	OS           string             `json:"os,omitempty"`
+	Browser      string             `json:"browser,omitempty"`
+	LastService  string             `json:"lastService,omitempty"`
+	LastAction   string             `json:"lastAction,omitempty"`
+	LogoutAt     *time.Time         `json:"logoutAt,omitempty"`
+}
+
+// GetSessionByIdRequest представляет запрос на получение сессии
+type GetSessionByIdRequest struct {
+	SessionID   string `json:"sessionId" validate:"required"`
+	ServiceName string `json:"serviceName" validate:"required"`
+	Action      string `json:"action,omitempty"`
+}
+
+// GetSessionByIdResponse представляет ответ с информацией о сессии
+type GetSessionByIdResponse struct {
+	Session *SessionInfo `json:"session"`
+	Status  string       `json:"status"`
+	Message string       `json:"message,omitempty"`
 }
 
 // Session constants

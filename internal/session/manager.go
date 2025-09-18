@@ -24,6 +24,7 @@ type Manager interface {
 	Update(ctx context.Context, session *models.Session) error
 	ValidateSession(session *models.Session) *models.SessionStatus
 	GetByID(ctx context.Context, sessionID string) (*models.Session, error)
+	GetSessionById(ctx context.Context, req *models.SessionGetRequest) (*models.SessionInfo, error)
 	IsSessionValid(session *models.Session) bool
 	UpdateActivity(req *models.SessionUpdateRequest)
 	InvalidateSession(ctx context.Context, req *models.SessionUpdateRequest)
@@ -122,6 +123,83 @@ func (m *manager) ValidateSession(session *models.Session) *models.SessionStatus
 
 func (m *manager) GetByID(ctx context.Context, sessionID string) (*models.Session, error) {
 	return m.repository.GetByID(ctx, sessionID)
+}
+
+func (m *manager) GetSessionById(ctx context.Context, req *models.SessionGetRequest) (*models.SessionInfo, error) {
+	log.WithFields(logrus.Fields{
+		"session_id": req.SessionID,
+		"service":    req.ServiceName,
+		"action":     req.Action,
+	}).Debug("Getting session by ID for external service")
+
+	session, err := m.repository.GetByID(ctx, req.SessionID)
+	if err != nil {
+		if errors.Is(err, models.ErrSessionNotFound) {
+			return nil, models.ErrSessionNotFound
+		}
+		log.WithError(err).WithField("session_id", req.SessionID).Error("Failed to get session by ID")
+		return nil, err
+	}
+
+	sessionInfo := m.buildSessionInfo(session)
+
+	// Update session activity for audit trail
+	m.updateSessionActivityForExternalCheck(session, req.ServiceName, req.Action)
+
+	m.logExternalSessionCheck(session, sessionInfo, req.ServiceName)
+	return sessionInfo, nil
+}
+
+func (m *manager) buildSessionInfo(session *models.Session) *models.SessionInfo {
+	deviceType := "unknown"
+	os := "unknown"
+	browser := "unknown"
+
+	if session.DeviceInfo != nil {
+		deviceType = session.DeviceInfo.DeviceType
+		os = session.DeviceInfo.OS
+		browser = session.DeviceInfo.Browser
+	}
+
+	return &models.SessionInfo{
+		SessionID:    session.SessionID,
+		UserID:       session.UserID,
+		IsActive:     session.IsActive,
+		IsValid:      session.IsValidSession(),
+		CreatedAt:    session.CreatedAt,
+		ExpiresAt:    session.ExpiresAt,
+		LastActiveAt: session.LastActiveAt,
+		IPAddress:    session.IPAddress,
+		DeviceType:   deviceType,
+		OS:           os,
+		Browser:      browser,
+		LastService:  session.LastService,
+		LastAction:   session.LastAction,
+		LogoutAt:     session.LogoutAt,
+	}
+}
+
+func (m *manager) updateSessionActivityForExternalCheck(session *models.Session, serviceName, action string) {
+	updateReq := &models.SessionUpdateRequest{
+		Session:     session,
+		ServiceName: serviceName,
+		Action:      action,
+	}
+	m.UpdateActivity(updateReq)
+}
+
+func (m *manager) logExternalSessionCheck(session *models.Session, sessionInfo *models.SessionInfo, serviceName string) {
+	log.WithFields(logrus.Fields{
+		"session_id":         session.SessionID,
+		"user_id":            session.UserID.Hex(),
+		"is_valid":           sessionInfo.IsValid,
+		"is_active":          sessionInfo.IsActive,
+		"device_type":        sessionInfo.DeviceType,
+		"ip_address":         sessionInfo.IPAddress,
+		"requesting_service": serviceName,
+		"last_service":       session.LastService,
+		"last_action":        session.LastAction,
+	}).Info("Session retrieved for external service")
 }
 
 func (m *manager) IsSessionValid(session *models.Session) bool {

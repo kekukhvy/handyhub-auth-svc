@@ -94,6 +94,11 @@ func setupPublicRoutes(router *gin.Engine, deps *dependency.Manager) {
 		auth.GET("/verify-token", deps.AuthHandler.VerifyToken)
 		auth.POST("/refresh", deps.AuthHandler.RefreshToken)
 	}
+
+	session := router.Group("/session")
+	{
+		session.GET("/:sessionId", deps.SessionHandler.GetSessionById)
+	}
 }
 
 func setupProtectedRoutes(router *gin.Engine, deps *dependency.Manager) {

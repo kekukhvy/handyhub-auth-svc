@@ -391,3 +391,44 @@ func (rv *RequestValidator) ValidateAndSanitizeRequest(req interface{}) *models.
 		return errors
 	}
 }
+
+// ValidateGetSessionByIdRequest validates get session by id request
+func (rv *RequestValidator) ValidateGetSessionByIdRequest(req *models.GetSessionByIdRequest) *models.ValidationErrors {
+	errors := &models.ValidationErrors{}
+
+	// Validate session ID
+	if req.SessionID == "" {
+		errors.Add("sessionId", "required", "", "Session ID is required")
+	} else if err := rv.tokenValidator.ValidateSessionID(req.SessionID); err != nil {
+		errors.Add("sessionId", "format", req.SessionID, "Invalid session ID format")
+	}
+
+	// Validate service name
+	if req.ServiceName == "" {
+		errors.Add("serviceName", "required", "", "Service name is required")
+	} else if len(req.ServiceName) < 3 {
+		errors.Add("serviceName", "min", req.ServiceName, "Service name too short")
+	} else if len(req.ServiceName) > 100 {
+		errors.Add("serviceName", "max", req.ServiceName, "Service name too long")
+	}
+
+	// Validate action (optional)
+	if req.Action != "" && len(req.Action) > 50 {
+		errors.Add("action", "max", req.Action, "Action name too long")
+	}
+
+	return errors
+}
+
+// SanitizeGetSessionByIdRequest sanitizes get session by id request
+func (rv *RequestValidator) SanitizeGetSessionByIdRequest(req *models.GetSessionByIdRequest) {
+	req.SessionID = rv.SanitizeString(req.SessionID)
+	req.ServiceName = rv.SanitizeString(req.ServiceName)
+	req.Action = rv.SanitizeString(req.Action)
+}
+
+// ValidateAndSanitizeGetSessionRequest validates and sanitizes get session request
+func (rv *RequestValidator) ValidateAndSanitizeGetSessionRequest(req *models.GetSessionByIdRequest) *models.ValidationErrors {
+	rv.SanitizeGetSessionByIdRequest(req)
+	return rv.ValidateGetSessionByIdRequest(req)
+}

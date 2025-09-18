@@ -32,6 +32,7 @@ type Manager struct {
 	SessionManager   session.Manager
 	AuthMiddleware   *middleware.AuthMiddleware
 	ActivityConsumer session.Consumer
+	SessionHandler   session.Handler
 }
 
 func NewDependencyManager(router *gin.Engine,
@@ -45,6 +46,7 @@ func NewDependencyManager(router *gin.Engine,
 	emailService := email.NewEmailService(cfg, rabbitMQ)
 	cacheService := cache.NewCacheService(redisClient, cfg)
 	sessionManager := session.NewManager(mongodb, cfg, cacheService)
+	sessionHandler := session.NewSessionHandler(cfg, sessionManager, requestValidator)
 	userRepository := user.NewUserRepository(mongodb, cfg.Database.UserCollection)
 	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
 	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService, jwtManager)
@@ -66,5 +68,6 @@ func NewDependencyManager(router *gin.Engine,
 		SessionManager:   sessionManager,
 		AuthMiddleware:   authMiddleware,
 		ActivityConsumer: activityConsumer,
+		SessionHandler:   sessionHandler,
 	}
 }
