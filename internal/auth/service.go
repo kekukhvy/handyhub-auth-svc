@@ -394,6 +394,11 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, err
 	}
 
+	if !user.IsActive() {
+		log.WithField("user_id", user.ID.Hex()).Warn("Inactive user token refresh attempt")
+		return nil, models.ErrUserInactive
+	}
+
 	// Get session by refresh token
 	currentSession, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
 	if err != nil {
@@ -408,11 +413,6 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		}
 	}
 
-	if !user.IsActive() {
-		log.WithField("user_id", user.ID.Hex()).Warn("Inactive user token refresh attempt")
-		return nil, models.ErrUserInactive
-	}
-
 	// Generate new access token
 	accessToken, accessExpiresAt, err := s.jwtManager.GenerateAccessToken(user.ID, currentSession.SessionID, user.Email, user.Role)
 	if err != nil {
@@ -425,7 +425,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	currentSession.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.RefreshTokenExpiration))
 
 	// Update session activity
-	s.sessionManager.UpdateSessionActivity(ctx, currentSession.SessionID)
+	s.sessionManager.Update(ctx, currentSession)
 	s.cacheService.CacheActiveSession(ctx, currentSession)
 
 	log.WithField("user_id", user.ID.Hex()).

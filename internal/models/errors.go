@@ -7,10 +7,8 @@ var (
 	ErrUserNotFound       = errors.New("user not found")
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrUserInactive       = errors.New("user account is inactive")
-	ErrUserSuspended      = errors.New("user account is suspended")
 	ErrEmailNotVerified   = errors.New("email not verified")
 	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrPhoneAlreadyExists = errors.New("phone number already exists")
 )
 
 // Token errors
@@ -19,10 +17,7 @@ var (
 	ErrTokenExpired     = errors.New("token expired")
 	ErrTokenMalformed   = errors.New("token malformed")
 	ErrTokenGenerating  = errors.New("error generating token")
-	ErrTokenParsing     = errors.New("error parsing token")
 	ErrInvalidTokenType = errors.New("invalid token type")
-	ErrTokenNotFound    = errors.New("token not found")
-	ErrTokenAlreadyUsed = errors.New("token already used")
 )
 
 // Session errors
@@ -33,8 +28,6 @@ var (
 	ErrSessionInvalid  = errors.New("session invalid")
 	ErrSessionCreating = errors.New("error creating session")
 	ErrSessionUpdating = errors.New("error updating session")
-	ErrSessionDeleting = errors.New("error deleting session")
-	ErrTooManySessions = errors.New("too many active sessions")
 )
 
 // Validation errors
@@ -54,75 +47,44 @@ var (
 
 // Database errors
 var (
-	ErrDatabaseConnection = errors.New("database connection error")
-	ErrDatabaseQuery      = errors.New("database query error")
-	ErrDatabaseInsert     = errors.New("database insert error")
-	ErrDatabaseUpdate     = errors.New("database update error")
-	ErrDatabaseDelete     = errors.New("database delete error")
-	ErrRecordNotFound     = errors.New("record not found")
-	ErrDuplicateRecord    = errors.New("duplicate record")
+	ErrDatabaseQuery  = errors.New("database query error")
+	ErrDatabaseInsert = errors.New("database insert error")
+	ErrDatabaseUpdate = errors.New("database update error")
 )
 
 // Redis errors
 var (
-	ErrRedisConnection = errors.New("redis connection error")
-	ErrRedisGet        = errors.New("redis get error")
-	ErrRedisSet        = errors.New("redis set error")
-	ErrRedisDelete     = errors.New("redis delete error")
-	ErrRedisExpire     = errors.New("redis expire error")
+	ErrRedisGet    = errors.New("redis get error")
+	ErrRedisSet    = errors.New("redis set error")
+	ErrRedisDelete = errors.New("redis delete error")
 )
 
-// Rate limiting errors
 var (
-	ErrRateLimitExceeded     = errors.New("rate limit exceeded")
-	ErrTooManyRequests       = errors.New("too many requests")
 	ErrLoginAttemptsExceeded = errors.New("too many login attempts")
 )
 
 // Generic errors
 var (
-	ErrInternalServer     = errors.New("internal server error")
-	ErrServiceUnavailable = errors.New("service unavailable")
-	ErrTimeout            = errors.New("request timeout")
-	ErrBadRequest         = errors.New("bad request")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrForbidden          = errors.New("forbidden")
-	ErrNotFound           = errors.New("not found")
-	ErrConflict           = errors.New("conflict")
-	ErrInvalidRequest     = errors.New("invalid request")
+	ErrInternalServer = errors.New("internal server error")
+	ErrUnauthorized   = errors.New("unauthorized")
+	ErrInvalidRequest = errors.New("invalid request")
 )
 
 // Security errors
 var (
-	ErrPasswordMismatch   = errors.New("password mismatch")
-	ErrWeakPassword       = errors.New("password is too weak")
-	ErrPasswordReused     = errors.New("password was recently used")
-	ErrInvalidCSRFToken   = errors.New("invalid csrf token")
-	ErrInvalidOrigin      = errors.New("invalid origin")
-	ErrSuspiciousActivity = errors.New("suspicious activity detected")
-	ErrAccountLocked      = errors.New("account temporarily locked")
-)
-
-// Password reset errors
-var (
-	ErrResetTokenExpired   = errors.New("password reset token expired")
-	ErrResetTokenInvalid   = errors.New("password reset token invalid")
-	ErrResetTokenUsed      = errors.New("password reset token already used")
-	ErrResetRequestTooSoon = errors.New("password reset requested too soon")
-	ErrResetLimitExceeded  = errors.New("password reset limit exceeded")
+	ErrPasswordMismatch = errors.New("password mismatch")
 )
 
 // Email verification errors
 var (
-	ErrVerificationTokenExpired  = errors.New("verification token expired")
-	ErrVerificationTokenInvalid  = errors.New("verification token invalid")
-	ErrEmailAlreadyVerified      = errors.New("email already verified")
-	ErrVerificationLimitExceeded = errors.New("verification attempts limit exceeded")
+	ErrVerificationTokenExpired = errors.New("verification token expired")
+	ErrVerificationTokenInvalid = errors.New("verification token invalid")
+	ErrEmailAlreadyVerified     = errors.New("email already verified")
 )
 
 // ErrorResponse represents API error response structure
 type ErrorResponse struct {
-	Status  string      `json:"status"`
+	Success bool        `json:"success"`
 	Error   string      `json:"error"`
 	Message string      `json:"message"`
 	Code    int         `json:"code,omitempty"`
@@ -131,7 +93,7 @@ type ErrorResponse struct {
 
 // SuccessResponse represents API success response structure
 type SuccessResponse struct {
-	Status  string      `json:"status"`
+	Success bool        `json:"success"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
@@ -152,36 +114,16 @@ type ValidationErrors struct {
 // NewErrorResponse creates a new error response
 func NewErrorResponse(err error, message string) *ErrorResponse {
 	return &ErrorResponse{
-		Status:  StatusError,
+		Success: false,
 		Error:   err.Error(),
 		Message: message,
-	}
-}
-
-// NewErrorResponseWithCode creates a new error response with code
-func NewErrorResponseWithCode(err error, message string, code int) *ErrorResponse {
-	return &ErrorResponse{
-		Status:  StatusError,
-		Error:   err.Error(),
-		Message: message,
-		Code:    code,
-	}
-}
-
-// NewErrorResponseWithDetails creates a new error response with details
-func NewErrorResponseWithDetails(err error, message string, details interface{}) *ErrorResponse {
-	return &ErrorResponse{
-		Status:  StatusError,
-		Error:   err.Error(),
-		Message: message,
-		Details: details,
 	}
 }
 
 // NewSuccessResponse creates a new success response
 func NewSuccessResponse(message string, data interface{}) *SuccessResponse {
 	return &SuccessResponse{
-		Status:  StatusSuccess,
+		Success: true,
 		Message: message,
 		Data:    data,
 	}
