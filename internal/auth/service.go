@@ -355,6 +355,7 @@ func (s *authService) VerifyToken(ctx context.Context, req *models.VerifyTokenRe
 	}, nil
 }
 
+// RefreshToken validates refresh token and generates new access token
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*models.RefreshTokenResponse, error) {
 	claims, err := s.validateRefreshToken(refreshToken)
 	if err != nil {
@@ -371,8 +372,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, err
 	}
 
-	ipAddress, userAgent := s.extractClientInfo(ctx)
-	err = s.refreshSessionWithClientInfo(ctx, session, ipAddress, userAgent)
+	err = s.updateSessionForRefresh(ctx, session)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +384,64 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 
 	s.logTokenRefreshSuccess(user, session)
 	return response, nil
+}
+
+// getSessionForRefresh gets existing session or creates new one if expired
+func (s *authService) getSessionForRefresh(ctx context.Context, refreshToken string, userID primitive.ObjectID) (*models.Session, error) {
+	session, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		log.WithError(err).Debug("Failed to find session by refresh token")
+		return s.createNewSessionForRefresh(ctx, userID)
+	}
+
+	if session == nil {
+		log.Debug("Session not found by refresh token, creating new session")
+		return s.createNewSessionForRefresh(ctx, userID)
+	}
+
+	return session, nil
+}
+
+// createNewSessionForRefresh creates new session with current client info
+func (s *authService) createNewSessionForRefresh(ctx context.Context, userID primitive.ObjectID) (*models.Session, error) {
+	ipAddress, userAgent := s.extractClientInfo(ctx)
+
+	sessionReq := &models.SessionCreateRequest{
+		UserID:      userID,
+		UserAgent:   userAgent,
+		IPAddress:   ipAddress,
+		ServiceName: "auth.service.RefreshToken",
+		Action:      "new_session_created",
+	}
+
+	session, err := s.sessionManager.CreateSession(ctx, sessionReq)
+	if err != nil {
+		log.WithError(err).Error("Failed to create new session for refresh")
+		return nil, models.ErrSessionCreating
+	}
+
+	log.WithFields(logrus.Fields{
+		"user_id":    userID.Hex(),
+		"session_id": session.SessionID,
+		"ip_address": ipAddress,
+	}).Info("New session created for token refresh")
+
+	return session, nil
+}
+
+// updateSessionForRefresh updates session with current client information
+func (s *authService) updateSessionForRefresh(ctx context.Context, session *models.Session) error {
+	ipAddress, userAgent := s.extractClientInfo(ctx)
+
+	updateReq := &models.SessionUpdateRequest{
+		Session:     session,
+		ServiceName: "auth.service.RefreshToken",
+		Action:      "session_refreshed",
+		UserAgent:   userAgent,
+		IPAddress:   ipAddress,
+	}
+
+	return s.sessionManager.RefreshSessionDetails(ctx, updateReq)
 }
 
 func (s *authService) ChangePassword(ctx context.Context, userID primitive.ObjectID, req *models.ChangePasswordRequest) error {
@@ -504,30 +562,6 @@ func (s *authService) verifyUserForRefresh(ctx context.Context, userIDStr string
 		return nil, models.ErrUserInactive
 	}
 	return user, nil
-}
-
-func (s *authService) getSessionForRefresh(ctx context.Context, refreshToken string, userID primitive.ObjectID) (*models.Session, error) {
-	session, err := s.sessionManager.GetSessionByRefreshToken(ctx, refreshToken)
-	if err != nil {
-		log.WithError(err).Error("Failed to find session by refresh token")
-		return nil, models.ErrSessionNotFound
-	}
-
-	if session == nil {
-		sessionReq := &models.SessionCreateRequest{
-			UserID:      userID,
-			UserAgent:   "",
-			IPAddress:   "",
-			ServiceName: "auth.service.RefreshToken",
-			Action:      "new_session_created",
-		}
-
-		session, err = s.sessionManager.CreateSession(ctx, sessionReq)
-		if err != nil {
-			return nil, models.ErrSessionCreating
-		}
-	}
-	return session, nil
 }
 
 func (s *authService) refreshSessionWithClientInfo(ctx context.Context, session *models.Session, ipAddress, userAgent string) error {

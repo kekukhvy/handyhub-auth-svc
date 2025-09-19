@@ -99,6 +99,7 @@ type QueueConfig struct {
 	RabbitMQ             RabbitMQConfig `mapstructure:"rabbitmq"`
 	UserActivityQueue    string         `mapstructure:"user-activity-queue"`
 	UserActivityConsumer string         `mapstructure:"user-activity-consumer"`
+	ActivityRoutingKey   string         `mapstructure:"activity-routing-key"`
 }
 
 type RabbitMQConfig struct {

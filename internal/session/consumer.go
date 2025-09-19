@@ -58,6 +58,25 @@ func (c *consumer) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Bind queue to exchange with routing key pattern
+	err = c.channel.QueueBind(
+		c.config.Queue.UserActivityQueue,  // queue name
+		c.config.Queue.ActivityRoutingKey, // routing key pattern from config
+		c.config.Queue.RabbitMQ.Exchange,  // exchange name
+		false,                             // no-wait
+		nil,                               // arguments
+	)
+	if err != nil {
+		log.WithError(err).Error("Failed to bind queue to exchange")
+		return err
+	}
+
+	log.WithFields(logrus.Fields{
+		"queue":       c.config.Queue.UserActivityQueue,
+		"exchange":    c.config.Queue.RabbitMQ.Exchange,
+		"routing_key": c.config.Queue.ActivityRoutingKey,
+	}).Info("Queue bound to exchange successfully")
+
 	// Set QoS to process messages one at a time
 	err = c.channel.Qos(
 		c.config.Queue.RabbitMQ.PrefetchCount,
