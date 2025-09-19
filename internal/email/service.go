@@ -42,7 +42,7 @@ type QueueMessage struct {
 }
 
 func NewEmailService(cfg *config.Configuration, rabbitMQ *clients.RabbitMQ) Service {
-	if !cfg.EmailService.Enabled {
+	if !cfg.ExternalServices.EmailService.Enabled {
 		logrus.Info("Email service disabled - using mock")
 		return &mockEmailService{}
 	}
@@ -84,8 +84,8 @@ func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationT
 	}
 
 	err = s.rabbitMQ.Channel.Publish(
-		s.config.Queue.RabbitMQ.Exchange,
-		s.config.Queue.RabbitMQ.RoutingKey,
+		s.config.Messaging.RabbitMQ.Exchange,
+		s.config.Messaging.Queues.Email.RoutingKey,
 		false,
 		false,
 		amqp.Publishing{
@@ -107,7 +107,7 @@ func (s *emailService) SendVerificationEmail(userEmail, firstName, verificationT
 func (s *emailService) SendPasswordResetEmail(userEmail, firstName, resetToken string) error {
 	log.WithField("email", userEmail).Debug("Queueing password reset email")
 
-	subject, htmlBody, err := RenderPasswordResetEmail(firstName, resetToken, s.config.EmailService.FrontendURL)
+	subject, htmlBody, err := RenderPasswordResetEmail(firstName, resetToken, s.config.ExternalServices.Frontend.Url)
 	if err != nil {
 		return fmt.Errorf("failed to render password reset email template: %w", err)
 	}
@@ -133,8 +133,8 @@ func (s *emailService) SendPasswordResetEmail(userEmail, firstName, resetToken s
 	}
 
 	err = s.rabbitMQ.Channel.Publish(
-		s.config.Queue.RabbitMQ.Exchange,
-		s.config.Queue.RabbitMQ.RoutingKey,
+		s.config.Messaging.RabbitMQ.Exchange,
+		s.config.Messaging.Queues.Email.RoutingKey,
 		false,
 		false,
 		amqp.Publishing{

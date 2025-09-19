@@ -503,7 +503,7 @@ func (s *authService) Logout(ctx context.Context, sessionID string) error {
 // Helper methods
 func (s *authService) checkLoginRateLimit(ctx context.Context, email string) error {
 	rateLimitKey := "login_attempts:" + email
-	limited, err := s.cacheService.CheckRateLimit(ctx, rateLimitKey, s.cfg.Security.LoginRateLimit)
+	limited, err := s.cacheService.CheckRateLimit(ctx, rateLimitKey, s.cfg.Security.RateLimiting.LoginAttempts)
 
 	if err == nil && limited {
 		log.WithField("email", email).Warn("Login rate limit exceeded")
@@ -583,7 +583,7 @@ func (s *authService) generateNewTokens(ctx context.Context, user *models.User, 
 	}
 
 	session.AccessToken = accessToken
-	session.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.RefreshTokenExpiration) * time.Minute)
+	session.ExpiresAt = time.Now().Add(time.Duration(s.cfg.Security.Tokens.RefreshExpiration) * time.Minute)
 
 	s.sessionManager.Update(ctx, session)
 	s.cacheService.CacheActiveSession(ctx, session)

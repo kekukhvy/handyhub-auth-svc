@@ -26,7 +26,7 @@ func NewRequestValidator(cfg *config.Configuration) *RequestValidator {
 
 	return &RequestValidator{
 		emailValidator:    NewEmailValidator(),
-		passwordValidator: NewPasswordValidator(&cfg.Security.PasswordValidation),
+		passwordValidator: NewPasswordValidator(&cfg.Security.Password.Validation),
 		tokenValidator:    NewTokenValidator(),
 		phoneRegex:        phoneRegex,
 		nameRegex:         nameRegex,

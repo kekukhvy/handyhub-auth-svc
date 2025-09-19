@@ -53,9 +53,9 @@ func NewPasswordValidator(validation *config.PasswordValidation) *PasswordValida
 	return &PasswordValidator{
 		minLength:           validation.MinLength,
 		maxLength:           128,
-		requireUppercase:    validation.RequireUpper,
-		requireLowercase:    validation.RequireLower,
-		requireDigits:       validation.RequireDigit,
+		requireUppercase:    validation.RequireUppercase,
+		requireLowercase:    validation.RequireLowercase,
+		requireDigits:       validation.RequireNumber,
 		requireSpecialChars: validation.RequireSpecial,
 		minSpecialChars:     1,
 		forbiddenPatterns:   []string{"password", "admin", "user", "login"},

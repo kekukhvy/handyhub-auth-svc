@@ -24,20 +24,20 @@ type CleanupJob struct {
 func NewCleanupJob(manager Manager, cache cache.Service, cfg *config.Configuration) *CleanupJob {
 	// Default cleanup interval
 	interval := 10 * time.Minute
-	if cfg.Security.SessionCleanupInterval > 0 {
-		interval = time.Duration(cfg.Security.SessionCleanupInterval) * time.Minute
+	if cfg.Security.Session.CleanupInterval > 0 {
+		interval = time.Duration(cfg.Security.Session.CleanupInterval) * time.Minute
 	}
 
 	// Inactivity timeout
 	inactivityTimeout := 30 * time.Minute
-	if cfg.Security.SessionInactivityTimeout > 0 {
-		inactivityTimeout = time.Duration(cfg.Security.SessionInactivityTimeout) * time.Minute
+	if cfg.Security.Session.InactivityTimeout > 0 {
+		inactivityTimeout = time.Duration(cfg.Security.Session.InactivityTimeout) * time.Minute
 	}
 
 	// Batch size
 	batchSize := 100
-	if cfg.Security.SessionCleanupBatchSize > 0 {
-		batchSize = cfg.Security.SessionCleanupBatchSize
+	if cfg.Security.Session.CleanupBatchSize > 0 {
+		batchSize = cfg.Security.Session.CleanupBatchSize
 	}
 
 	return &CleanupJob{

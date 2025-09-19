@@ -1,14 +1,15 @@
-database:
-  url: "mongodb://localhost:27017"
-  dbname: "handyhub"
-  user-collection: "users"
-  session-collection: "sessions"
-  timeout: 10
+# HandyHub Auth Service Configuration
 
-redis:
-  url: "localhost:6379"
-  password: ""
-  db: 3
+app:
+  name: "handyhub-auth-svc"
+  version: "1.0.0"
+  timeout: 10
+  host-link: "http://localhost:8001"
+
+logs:
+  level: "debug"
+  path: "logs/sys.log"
+  enable-json-output: true
 
 server:
   port: ":8001"
@@ -17,65 +18,29 @@ server:
   write-timeout: 30
   idle-timeout: 60
 
-app:
-  name: "handyhub-auth-svc"
+database:
+  url: "mongodb://localhost:27017"
+  dbname: "handyhub"
   timeout: 10
-  version: "1.0.0"
-  host-link: "http://localhost:8001"
+  collections:
+    users: "users"
+    sessions: "sessions"
 
+redis:
+  url: "localhost:6379"
+  password: ""
+  db: 3
 
-logs:
-  level: "debug"
-  log-path: "logs/sys.log"
-  enable-json-output: true
-
-security:
-  jwt-key: "your-secret-jwt-key"
-  access-token-expiration: 60  # minutes
-  refresh-token-expiration: 10080  # minutes (14 days)
-  password-salt-rounds: 12
-  login-rate-limit: 5
-  session-inactivity-timeout: 30
-  session-cleanup-interval: 30
-  session-cleanup-batch-size: 100
-  password-validation:
-    min-length: 6
-    require-uppercase: true
-    require-lowercase: true
-    require-number: true
-    require-special: false
-    max-char-repeats: 5
-    max-sequential-chars: 5
-
-rate-limit:
-  login-attempts: 5
-  window-minutes: 15
-
-email-service:
-  enabled: true
-  url: "http://localhost:8008"
-  frontend-url: "http://localhost:4200"
-
-cache:
-  expiration-minutes: 60
-  session-expiration-minutes: 30
-  extended-expiration-minutes: 30
-
-queue:
-  user-activity-queue: "user_activity_queue"
-  user-activity-consumer: "user_activity_consumer"
-  activity-routing-key: "activity.*"
+messaging:
   rabbitmq:
     url: "amqp://guest:guest@localhost:5672/"
     exchange: "handyhub"
     exchange-type: "topic"
-    email-queue: "email_queue"
     prefetch-count: 1
     prefetch-size: 0
     global: false
     reconnect-delay: 5
     timeout: 10
-    routing-key: "email.send"
     durable: true
     auto-delete: false
     internal: false
@@ -83,8 +48,49 @@ queue:
     exclusive: false
     auto-ack: false
     no-local: false
-    consumer: "email_consumer"
+  queues:
+    email:
+      name: "email_queue"
+      routing-key: "email.send"
+      consumer: "email_consumer"
+    user-activity:
+      name: "user_activity_queue"
+      routing-key: "activity.*"
+      consumer: "user_activity_consumer"
 
-frontend:
-  url: "http://localhost:4200"
-  login-path: "/login"
+security:
+  jwt-key: "your-secret-jwt-key"
+  tokens:
+    access-expiration: 60    # minutes
+    refresh-expiration: 10080  # minutes (14 days)
+  password:
+    salt-rounds: 12
+    validation:
+      min-length: 6
+      require-uppercase: true
+      require-lowercase: true
+      require-number: true
+      require-special: false
+      max-char-repeats: 5
+      max-sequential-chars: 5
+  rate-limit:
+    login-attempts: 5
+    window-minutes: 15
+  session:
+    inactivity-timeout: 30    # minutes
+    cleanup-interval: 30      # minutes
+    cleanup-batch-size: 100
+
+cache:
+  expiration-minutes: 60
+  session-expiration-minutes: 30
+  extended-expiration-minutes: 30
+
+external-services:
+  email-service:
+    enabled: true
+    url: "http://localhost:8008"
+    frontend-url: "http://localhost:4200"
+  frontend:
+    url: "http://localhost:4200"
+    login-path: "/login"

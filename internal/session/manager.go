@@ -47,7 +47,7 @@ type manager struct {
 
 func NewManager(db *clients.MongoDB, cfg *config.Configuration, cacheService cache.Service) Manager {
 	return &manager{
-		repository:   NewSessionRepository(db, cfg.Database.SessionCollection),
+		repository:   NewSessionRepository(db, cfg.Database.Collections.Sessions),
 		cacheService: cacheService,
 		cfg:          cfg,
 	}
@@ -67,10 +67,13 @@ func (m *manager) CreateSession(ctx context.Context, req *models.SessionCreateRe
 		CreatedAt:    now,
 		LastActiveAt: now,
 		LastService:  req.ServiceName,
-		LastAction:   req.Action,
+		LastAction:   []models.ActionHistoryItem{},
 		IsActive:     true,
 		DeviceInfo:   deviceInfo,
 	}
+
+	// Add initial action to session history
+	session.AddAction(req.Action)
 
 	m.logSessionCreation(req.UserID, sessionID, req.IPAddress, deviceInfo, req.ServiceName, req.Action)
 
@@ -217,7 +220,8 @@ func (m *manager) UpdateActivity(req *models.SessionUpdateRequest) {
 
 	req.Session.UpdateActivity()
 	req.Session.LastService = req.ServiceName
-	req.Session.LastAction = req.Action
+
+	req.Session.AddAction(req.Action)
 
 	m.updateClientInfo(req.Session, req.UserAgent, req.IPAddress)
 
@@ -245,9 +249,8 @@ func (m *manager) InvalidateSession(ctx context.Context, req *models.SessionUpda
 		return
 	}
 
-	req.Session.Logout()
+	req.Session.Logout() // This will call AddAction("session_logged_out") internally
 	req.Session.LastService = req.ServiceName
-	req.Session.LastAction = req.Action
 
 	m.updateClientInfo(req.Session, req.UserAgent, req.IPAddress)
 
@@ -377,7 +380,8 @@ func (m *manager) UpdateSessionActivity(ctx context.Context, msg *models.Activit
 func (m *manager) updateSessionFromMessage(session *models.Session, msg *models.ActivityMessage) {
 	session.LastActiveAt = time.Now()
 	session.LastService = msg.ServiceName
-	session.LastAction = msg.Action
+
+	session.AddAction(msg.Action)
 
 	m.updateClientInfo(session, msg.UserAgent, msg.IPAddress)
 }
@@ -406,7 +410,7 @@ func (m *manager) RefreshSessionDetails(ctx context.Context, req *models.Session
 
 	req.Session.LastActiveAt = time.Now()
 	req.Session.LastService = req.ServiceName
-	req.Session.LastAction = req.Action
+	req.Session.AddAction(req.Action)
 
 	m.updateClientInfoAndLog(req)
 

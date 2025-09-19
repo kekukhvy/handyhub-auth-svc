@@ -41,13 +41,13 @@ func NewDependencyManager(router *gin.Engine,
 	rabbitMQ *clients.RabbitMQ,
 	cfg *config.Configuration) *Manager {
 	tokenValidator := validators.NewTokenValidator()
-	jwtManager := utils.NewJWTManager(cfg.Security.JwtKey, cfg.Security.AccessTokenExpiration, cfg.Security.RefreshTokenExpiration)
+	jwtManager := utils.NewJWTManager(cfg.Security.JwtKey, cfg.Security.Tokens.AccessExpiration, cfg.Security.Tokens.RefreshExpiration)
 	requestValidator := validators.NewRequestValidator(cfg)
 	emailService := email.NewEmailService(cfg, rabbitMQ)
 	cacheService := cache.NewCacheService(redisClient, cfg)
 	sessionManager := session.NewManager(mongodb, cfg, cacheService)
 	sessionHandler := session.NewSessionHandler(cfg, sessionManager, requestValidator)
-	userRepository := user.NewUserRepository(mongodb, cfg.Database.UserCollection)
+	userRepository := user.NewUserRepository(mongodb, cfg.Database.Collections.Users)
 	userService := user.NewUserService(userRepository, emailService, &cfg.Cache, cacheService)
 	authService := auth.NewAuthService(requestValidator, userService, cfg, sessionManager, cacheService, jwtManager)
 	authHandler := auth.NewAuthHandler(cfg, authService, tokenValidator)

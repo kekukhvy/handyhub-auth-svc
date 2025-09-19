@@ -134,7 +134,7 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 
 	// Get token from query parameter
 	token := c.Query("token")
-	var endpoint = fmt.Sprintf("%s%s", h.cfg.Frontend.Url, h.cfg.Frontend.LoginPath)
+	var endpoint = fmt.Sprintf("%s%s", h.cfg.ExternalServices.Frontend.Url, h.cfg.ExternalServices.Frontend.LoginPath)
 	if token == "" {
 		log.Error("Verification token not provided")
 		// Redirect to frontend with error

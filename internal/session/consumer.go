@@ -42,15 +42,15 @@ func NewConsumer(
 }
 
 func (c *consumer) Start(ctx context.Context) error {
-	log.WithField("queue", c.config.Queue.UserActivityQueue).Info("Starting user activity consumer")
+	log.WithField("queue", c.config.Messaging.Queues.UserActivity.Name).Info("Starting user activity consumer")
 
 	// Declare the queue
 	_, err := c.channel.QueueDeclare(
-		c.config.Queue.UserActivityQueue,
-		c.config.Queue.RabbitMQ.Durable,
-		c.config.Queue.RabbitMQ.AutoDelete,
-		c.config.Queue.RabbitMQ.Exclusive,
-		c.config.Queue.RabbitMQ.NoWait,
+		c.config.Messaging.Queues.UserActivity.Name,
+		c.config.Messaging.RabbitMQ.Durable,
+		c.config.Messaging.RabbitMQ.AutoDelete,
+		c.config.Messaging.RabbitMQ.Exclusive,
+		c.config.Messaging.RabbitMQ.NoWait,
 		nil, // arguments
 	)
 	if err != nil {
@@ -60,11 +60,11 @@ func (c *consumer) Start(ctx context.Context) error {
 
 	// Bind queue to exchange with routing key pattern
 	err = c.channel.QueueBind(
-		c.config.Queue.UserActivityQueue,  // queue name
-		c.config.Queue.ActivityRoutingKey, // routing key pattern from config
-		c.config.Queue.RabbitMQ.Exchange,  // exchange name
-		false,                             // no-wait
-		nil,                               // arguments
+		c.config.Messaging.Queues.UserActivity.Name,       // queue name
+		c.config.Messaging.Queues.UserActivity.RoutingKey, // routing key pattern from config
+		c.config.Messaging.RabbitMQ.Exchange,              // exchange name
+		false,                                             // no-wait
+		nil,                                               // arguments
 	)
 	if err != nil {
 		log.WithError(err).Error("Failed to bind queue to exchange")
@@ -72,16 +72,16 @@ func (c *consumer) Start(ctx context.Context) error {
 	}
 
 	log.WithFields(logrus.Fields{
-		"queue":       c.config.Queue.UserActivityQueue,
-		"exchange":    c.config.Queue.RabbitMQ.Exchange,
-		"routing_key": c.config.Queue.ActivityRoutingKey,
+		"queue":       c.config.Messaging.Queues.UserActivity.Name,
+		"exchange":    c.config.Messaging.RabbitMQ.Exchange,
+		"routing_key": c.config.Messaging.Queues.UserActivity.RoutingKey,
 	}).Info("Queue bound to exchange successfully")
 
 	// Set QoS to process messages one at a time
 	err = c.channel.Qos(
-		c.config.Queue.RabbitMQ.PrefetchCount,
-		c.config.Queue.RabbitMQ.PrefetchSize,
-		c.config.Queue.RabbitMQ.Global,
+		c.config.Messaging.RabbitMQ.PrefetchCount,
+		c.config.Messaging.RabbitMQ.PrefetchSize,
+		c.config.Messaging.RabbitMQ.Global,
 	)
 	if err != nil {
 		log.WithError(err).Error("Failed to set QoS")
@@ -89,12 +89,12 @@ func (c *consumer) Start(ctx context.Context) error {
 	}
 
 	messages, err := c.channel.Consume(
-		c.config.Queue.UserActivityQueue,
-		c.config.Queue.UserActivityConsumer,
-		c.config.Queue.RabbitMQ.AutoAck,
-		c.config.Queue.RabbitMQ.Exclusive,
-		c.config.Queue.RabbitMQ.NoLocal,
-		c.config.Queue.RabbitMQ.NoWait,
+		c.config.Messaging.Queues.UserActivity.Name,
+		c.config.Messaging.Queues.UserActivity.Consumer,
+		c.config.Messaging.RabbitMQ.AutoAck,
+		c.config.Messaging.RabbitMQ.Exclusive,
+		c.config.Messaging.RabbitMQ.NoLocal,
+		c.config.Messaging.RabbitMQ.NoWait,
 		nil, // args
 	)
 	if err != nil {
