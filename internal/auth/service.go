@@ -168,7 +168,6 @@ func (s *authService) generateTokensAndUpdateSession(ctx context.Context, user *
 
 	session.RefreshToken = refreshToken
 	session.AccessToken = accessToken
-	session.ExpiresAt = refreshExpiresAt
 	session.IPAddress = ipAddress
 	session.UserAgent = userAgent
 

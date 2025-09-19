@@ -70,6 +70,7 @@ func (m *manager) CreateSession(ctx context.Context, req *models.SessionCreateRe
 		LastAction:   []models.ActionHistoryItem{},
 		IsActive:     true,
 		DeviceInfo:   deviceInfo,
+		ExpiresAt:    now.Add(time.Duration(m.cfg.Security.Session.InactivityTimeout) * time.Minute),
 	}
 
 	// Add initial action to session history
@@ -380,7 +381,7 @@ func (m *manager) UpdateSessionActivity(ctx context.Context, msg *models.Activit
 func (m *manager) updateSessionFromMessage(session *models.Session, msg *models.ActivityMessage) {
 	session.LastActiveAt = time.Now()
 	session.LastService = msg.ServiceName
-
+	session.ExpiresAt = time.Now().Add(time.Duration(m.cfg.Security.Session.InactivityTimeout) * time.Minute)
 	session.AddAction(msg.Action)
 
 	m.updateClientInfo(session, msg.UserAgent, msg.IPAddress)
